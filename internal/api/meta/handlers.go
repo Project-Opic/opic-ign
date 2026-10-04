@@ -1,4 +1,7 @@
-// Package meta —— 元数据控制器(字典/客户状态/M3 规则;数据源为本体注册表)。
+// Package meta —— 元数据控制器(字典/执行机状态清单/M3 规则;数据源为本体注册表)。
+//
+// 点火中心(ignition)fork 改造:底座客户状态清单(customer-status)已移除,
+// 替代为执行机状态清单(ign-status);字典接口改由 /api/v1/ign/dictionaries 提供(11 类枚举)。
 package meta
 
 import (
@@ -12,20 +15,24 @@ import (
 	"gitcode.com/opic-ontology/opic-techbase/pkg/errcode"
 )
 
-var customerStatuses = []string{"草稿", "待客户经理审批", "待部门总经理审批", "已通过", "已驳回"}
+// ignExecutorStatuses 执行机治理状态清单(IGN_EXECUTOR_STATUS;状态类字典取值不允许停用,Q-45)。
+var ignExecutorStatuses = []string{"ENROLLING", "READY", "LOCKED", "DEGRADED", "RENEWAL_PENDING", "REMOVED"}
 
-// Dictionaries GET /api/meta/dictionaries 字典项。
+// IgnCheckpointNote 模型校验时机说明(保存即校验 vs 仅提交时强制校验;M3 各 INV 描述)。
+var IgnCheckpointNote = "保存即校验:INV-01/02/03/06/08/11/13/14/16/18/19/20/24/27/28;仅提交时强制校验:INV-04/05/07/09/10/12/15/17/21/23/25/26/29/30/31/32/33"
+
+// Dictionaries GET /api/meta/dictionaries 字典项(兼容入口;ign 全量字典见 /api/v1/ign/dictionaries)。
 func Dictionaries(c *gin.Context) {
 	reg := ontology.Load()
 	c.JSON(200, errcode.OK(map[string]any{
-		"CUSTOMER_TYPE":  common.OrEmpty(reg.GetDictionaryItems("DICT-CUSTOMER-TYPE", "CUSTOMER_TYPE")),
-		"CUSTOMER_LEVEL": common.OrEmpty(reg.GetDictionaryItems("DICT-CUSTOMER-LEVEL", "CUSTOMER_LEVEL")),
+		"IGN_EXECUTOR_STATUS": common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_EXECUTOR_STATUS", "IGN_EXECUTOR_STATUS")),
+		"IGN_TASK_STATUS":     common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_TASK_STATUS", "IGN_TASK_STATUS")),
 	}))
 }
 
-// CustomerStatus GET /api/meta/customer-status 客户状态清单。
-func CustomerStatus(c *gin.Context) {
-	c.JSON(200, errcode.OK(customerStatuses))
+// IgnStatus GET /api/meta/ign-status 执行机治理状态清单。
+func IgnStatus(c *gin.Context) {
+	c.JSON(200, errcode.OK(ignExecutorStatuses))
 }
 
 // Rules GET /api/meta/rules M3 规则清单。

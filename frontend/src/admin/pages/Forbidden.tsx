@@ -31,7 +31,7 @@ export default function GlassForbidden() {
         </div>
         <div className="brand-result-actions">
           <Space size={12} wrap>
-            <Link to="/customer/apply">
+            <Link to="/ign/version">
               <Button type="primary" icon={<SwapOutlined />}>
                 进入用户工作台
               </Button>

@@ -1,0 +1,403 @@
+model_type: RULE
+version: '1.0'
+domain: 交付执行域
+rules:
+- id: REF-01
+  name: 引导令牌有效期取平台配置（缺省 24 小时）
+  ruleType: FORMAT
+  description: BootstrapCredential.expiresAt
+  expression: BootstrapCredential.expiresAt
+  reusedBy: []
+  version: '1.0'
+- id: REF-02
+  name: 任务默认超时取平台配置（缺省 7200 秒）
+  ruleType: FORMAT
+  description: ExecTask.timeoutSeconds
+  expression: ExecTask.timeoutSeconds
+  reusedBy: []
+  version: '1.0'
+- id: REF-03
+  name: 心跳超时阈值取平台配置（缺省 120 秒）
+  ruleType: FORMAT
+  description: Executor.lastHeartbeatAt 比对基准
+  expression: Executor.lastHeartbeatAt 比对基准
+  reusedBy: []
+  version: '1.0'
+- id: REF-04
+  name: 预推并发上限取平台配置（缺省 4，热生效）
+  ruleType: FORMAT
+  description: B-AUTO-02 调度基准
+  expression: B-AUTO-02 调度基准
+  reusedBy: []
+  version: '1.0'
+- id: REF-05
+  name: 证书通用名称由固定模板生成（服务端 <名>.exec.local / 客户端 executor-<id>-client），不人工指定
+  ruleType: FORMAT
+  description: ExecutorTlsBinding.commonName
+  expression: ExecutorTlsBinding.commonName
+  reusedBy: []
+  version: '1.0'
+- id: REF-06
+  name: 证书剩余天数由生效止即时计算、不落库（派生口径）
+  ruleType: FORMAT
+  description: ExecutorTlsBinding.notAfter
+  expression: ExecutorTlsBinding.notAfter
+  reusedBy: []
+  version: '1.0'
+- id: REF-07
+  name: 证书续期提前天数取平台配置（缺省 14 天）
+  ruleType: FORMAT
+  description: B-AUTO-05 触发基准
+  expression: B-AUTO-05 触发基准
+  reusedBy: []
+  version: '1.0'
+- id: REF-08
+  name: 版本软删除须已归档且超过平台配置天数（缺省 30 天）
+  ruleType: FORMAT
+  description: DeliveryVersion.archivedAt
+  expression: DeliveryVersion.archivedAt
+  reusedBy: []
+  version: '1.0'
+- id: REF-09
+  name: 请求令牌防重放窗口取平台配置（缺省 24 小时）
+  ruleType: FORMAT
+  description: ExecTask.requestTokenDigest 兜底口径
+  expression: ExecTask.requestTokenDigest 兜底口径
+  reusedBy: []
+  version: '1.0'
+- id: REF-10
+  name: LOCAL 执行机并发上限为系统常量（缺省 4），不提供修改
+  ruleType: FORMAT
+  description: Executor.concurrentTasksMax
+  expression: Executor.concurrentTasksMax
+  reusedBy: []
+  version: '1.0'
+- id: REF-11
+  name: 下载与预推的重试次数与间隔取平台配置
+  ruleType: FORMAT
+  description: B-AUTO-01 / B-AUTO-02
+  expression: B-AUTO-01 / B-AUTO-02
+  reusedBy: []
+  version: '1.0'
+- id: REF-12
+  name: 状态对账周期取平台配置（缺省 60 秒）
+  ruleType: FORMAT
+  description: B-AUTO-09 调度基准
+  expression: B-AUTO-09 调度基准
+  reusedBy: []
+  version: '1.0'
+- id: INV-01
+  name: 版本名在未归档范围内唯一（保存即校验）
+  ruleType: INVARIANT
+  description: 交付版本：版本名在未归档范围内唯一（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-02
+  name: '交付工具版本为语义化版本、编排引擎版本为 v1.x.y 格式、发行包地址为合法 '
+  ruleType: INVARIANT
+  description: 交付版本：交付工具版本为语义化版本、编排引擎版本为 v1.x.y 格式、发行包地址为合法 URL（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-03
+  name: CNI 插件取值必须命中 IGN_CNI_PLUGIN 字典（保存即校验）
+  ruleType: INVARIANT
+  description: 交付版本：CNI 插件取值必须命中 IGN_CNI_PLUGIN 字典（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-04
+  name: 组件版本组（交付工具 / 编排引擎 / 运行时 / etcd / CNI 插件与
+  ruleType: INVARIANT
+  description: 交付版本：组件版本组（交付工具 / 编排引擎 / 运行时 / etcd / CNI 插件与版本 / CoreDNS 六项）创建后不可修改（定性二：会被选进集群配置的契约；仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-05
+  name: 已归档版本的登记字段冻结（终态冻结；仅提交时强制校验）
+  ruleType: INVARIANT
+  description: 交付版本：已归档版本的登记字段冻结（终态冻结；仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-06
+  name: 缓存解压路径仅当状态处于「就绪 / 预推中 / 已预推 / 部分预推」时非空；离
+  ruleType: INVARIANT
+  description: 交付版本：缓存解压路径仅当状态处于「就绪 / 预推中 / 已预推 / 部分预推」时非空；离开这些状态（失败重置）时允许清空待重建（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-07
+  name: 版本状态迁移路径固定单向；FAILED 可从任意非终态进入且重试后回归对应阶段（
+  ruleType: INVARIANT
+  description: 交付版本：版本状态迁移路径固定单向；FAILED 可从任意非终态进入且重试后回归对应阶段（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-08
+  name: 同一版本内「仓库 + 标签」联合唯一；预推明细由镜像清单派生生成、清单覆写时同步
+  ruleType: INVARIANT
+  description: 镜像预推明细：同一版本内「仓库 + 标签」联合唯一；预推明细由镜像清单派生生成、清单覆写时同步对齐（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-09
+  name: 预推状态为 FAILED 时失败原因必填；SUCCESS 时摘要必填（仅提交时强
+  ruleType: INVARIANT
+  description: 镜像预推明细：预推状态为 FAILED 时失败原因必填；SUCCESS 时摘要必填（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-10
+  name: SKIPPED 必须携带跳过依据（仓库侧摘要已存在）；PENDING 不得出现在
+  ruleType: INVARIANT
+  description: 镜像预推明细：SKIPPED 必须携带跳过依据（仓库侧摘要已存在）；PENDING 不得出现在预推动作结束之后（终态收口核对，仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-11
+  name: 名称在未注销范围内唯一；服务地址 + 端口组合在未注销范围内唯一（保存即校验）
+  ruleType: INVARIANT
+  description: 执行机：名称在未注销范围内唯一；服务地址 + 端口组合在未注销范围内唯一（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-12
+  name: LOCAL 类型全平台至多一行、由系统自动注册；人工创建 LOCAL 一律拒绝（
+  ruleType: INVARIANT
+  description: 执行机：LOCAL 类型全平台至多一行、由系统自动注册；人工创建 LOCAL 一律拒绝（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-13
+  name: REMOTE 必须引用 O-AST 资产标识；LOCAL 不得有引导凭据与证书绑
+  ruleType: INVARIANT
+  description: 执行机：REMOTE 必须引用 O-AST 资产标识；LOCAL 不得有引导凭据与证书绑定（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-14
+  name: 服务端口为 1024~65535 的整数（保存即校验）
+  ruleType: INVARIANT
+  description: 执行机：服务端口为 1024~65535 的整数（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-15
+  name: 当前任务数不得为负、不得超过并发上限（原子口径；对账纠偏是唯一例外路径且必须留痕
+  ruleType: INVARIANT
+  description: 执行机：当前任务数不得为负、不得超过并发上限（原子口径；对账纠偏是唯一例外路径且必须留痕，R-06；仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-16
+  name: LOCAL 的并发上限由系统固定（缺省 4），不提供修改（保存即校验）
+  ruleType: INVARIANT
+  description: 执行机：LOCAL 的并发上限由系统固定（缺省 4），不提供修改（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-17
+  name: 已注销（REMOVED）为终态：不再分发任务、登记字段冻结（仅提交时强制校验）
+  ruleType: INVARIANT
+  description: 执行机：已注销（REMOVED）为终态：不再分发任务、登记字段冻结（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-18
+  name: 能力标签每个取值必须命中 IGN_CAPABILITY 字典（保存即校验）
+  ruleType: INVARIANT
+  description: 执行机：能力标签每个取值必须命中 IGN_CAPABILITY 字典（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-19
+  name: 同一执行机至多一条 ACTIVE 引导凭据；重新生成使旧凭据置 REVOKED（
+  ruleType: INVARIANT
+  description: 引导凭据：同一执行机至多一条 ACTIVE 引导凭据；重新生成使旧凭据置 REVOKED（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-20
+  name: 令牌密文与 nonce 成对出现或同时为空（消耗后两者同时置空；保存即校验）
+  ruleType: INVARIANT
+  description: 引导凭据：令牌密文与 nonce 成对出现或同时为空（消耗后两者同时置空；保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-21
+  name: 仅 ACTIVE 且未过期的凭据可用于引导；CONSUMED / EXPIRED
+  ruleType: INVARIANT
+  description: 引导凭据：仅 ACTIVE 且未过期的凭据可用于引导；CONSUMED / EXPIRED / REVOKED 一律拒绝（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-22
+  name: 令牌密文、nonce 与令牌本体不得出现在任何查询响应、事件载荷、报表、导出与审
+  ruleType: INVARIANT
+  description: 引导凭据：令牌密文、nonce 与令牌本体不得出现在任何查询响应、事件载荷、报表、导出与审计记录中（输出面约束；Q-2 两处明文路径之外的全面禁止）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-23
+  name: 同一执行机的同一用途至多一条生效绑定（PENDING / ACTIVE / RE
+  ruleType: INVARIANT
+  description: 通道证书绑定：同一执行机的同一用途至多一条生效绑定（PENDING / ACTIVE / RENEWING）；重复签发走续期路径（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-24
+  name: 生效止必须晚于生效起（保存即校验）
+  ruleType: INVARIANT
+  description: 通道证书绑定：生效止必须晚于生效起（保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-25
+  name: REVOKED 为终态；重新启用 = 新建绑定（仅提交时强制校验）
+  ruleType: INVARIANT
+  description: 通道证书绑定：REVOKED 为终态；重新启用 = 新建绑定（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-26
+  name: 续期次数只增不减；凭据标识更新仅发生在续期路径且伴随续期计数递增与留痕（仅提交时
+  ruleType: INVARIANT
+  description: 通道证书绑定：续期次数只增不减；凭据标识更新仅发生在续期路径且伴随续期计数递增与留痕（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-27
+  name: 显式降级（TLS 跳过）的执行机不得存在任何绑定；存在绑定的执行机不得声明降级（
+  ruleType: INVARIANT
+  description: 通道证书绑定：显式降级（TLS 跳过）的执行机不得存在任何绑定；存在绑定的执行机不得声明降级（互斥口径，Q-5；保存即校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-28
+  name: 执行动作必须命中 IGN_ACTION 白名单（保存即校验；白名单外不是校验失败
+  ruleType: INVARIANT
+  description: 执行任务：执行动作必须命中 IGN_ACTION 白名单（保存即校验；白名单外不是校验失败而是治理拒绝，见 3.4）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-29
+  name: RUNNING / CANCELLING 必须有开始时间且无结束时间；三个终态必
+  ruleType: INVARIANT
+  description: 执行任务：RUNNING / CANCELLING 必须有开始时间且无结束时间；三个终态必须有结束时间与退出码或失败原因之一（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-30
+  name: FAILED 与 CANCELLED 分列 —— 失败（执行机判定或平台判定异常
+  ruleType: INVARIANT
+  description: 执行任务：FAILED 与 CANCELLED 分列 —— 失败（执行机判定或平台判定异常）与取消（人为中止）恢复路径不同（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-31
+  name: 同一执行机上、防重放窗口内的请求令牌摘要至多对应一个任务（重复提交返回原任务；窗
+  ruleType: INVARIANT
+  description: 执行任务：同一执行机上、防重放窗口内的请求令牌摘要至多对应一个任务（重复提交返回原任务；窗口由执行机侧维护 24 小时，本域以摘要唯一性兜底；仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-32
+  name: 任务记录创建后不可改写（状态对账与崩溃恢复的回填除外、必须留痕）；重试 = 新任
+  ruleType: INVARIANT
+  description: 执行任务：任务记录创建后不可改写（状态对账与崩溃恢复的回填除外、必须留痕）；重试 = 新任务（仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: INV-33
+  name: 任务必须归属一个关联集群（跨域引用只存标识；不直查集群域表，仅提交时强制校验）
+  ruleType: INVARIANT
+  description: 执行任务：任务必须归属一个关联集群（跨域引用只存标识；不直查集群域表，仅提交时强制校验）
+  expression: ''
+  reusedBy: []
+  version: '1.0'
+- id: R-01
+  name: 版本与执行机的删除保护
+  ruleType: CROSS_OBJECT
+  description: 版本与执行机的删除保护：引用存在性由集群域声明、本域不直查他域表；被引用版本不可删、被引用执行机注销走强制审批；删除提示仓库侧镜像清理清单
+  expression: 版本与执行机的删除保护：引用存在性由集群域声明、本域不直查他域表；被引用版本不可删、被引用执行机注销走强制审批；删除提示仓库侧镜像清理清单
+  reusedBy: []
+  version: '1.0'
+- id: R-02
+  name: 发行包下载完成判定
+  ruleType: CROSS_OBJECT
+  description: 发行包下载完成判定：摘要提供即强校验、不匹配删除已下载文件重下；校验通过才写缓存路径并置就绪
+  expression: 发行包下载完成判定：摘要提供即强校验、不匹配删除已下载文件重下；校验通过才写缓存路径并置就绪
+  reusedBy: []
+  version: '1.0'
+- id: R-03
+  name: 引导完成判定 = 服务端与客户端两条绑定同时 ACTIVE + 引导凭据 CONSUMED ⇒ 执行机置就绪；单侧签发失败即吊销已签发侧（半引导不允许存活）
+  ruleType: CROSS_OBJECT
+  description: 引导完成判定 = 服务端与客户端两条绑定同时 ACTIVE + 引导凭据 CONSUMED ⇒ 执行机置就绪；单侧签发失败即吊销已签发侧（半引导不允许存活）
+  expression: 引导完成判定 = 服务端与客户端两条绑定同时 ACTIVE + 引导凭据 CONSUMED ⇒ 执行机置就绪；单侧签发失败即吊销已签发侧（半引导不允许存活）
+  reusedBy: []
+  version: '1.0'
+- id: R-04
+  name: 引导失败计数达到阈值 ⇒ 执行机置锁定（解锁 = 重新生成令牌，一个动作）
+  ruleType: CROSS_OBJECT
+  description: 引导失败计数达到阈值 ⇒ 执行机置锁定（解锁 = 重新生成令牌，一个动作）
+  expression: 引导失败计数达到阈值 ⇒ 执行机置锁定（解锁 = 重新生成令牌，一个动作）
+  reusedBy: []
+  version: '1.0'
+- id: R-05
+  name: 任务分发与结束驱动执行机计数原子增减
+  ruleType: CROSS_OBJECT
+  description: 任务分发与结束驱动执行机计数原子增减：超上限影响 0 行 = 容量拒绝（503 语义）；任务异常结束也保证不下溢
+  expression: 任务分发与结束驱动执行机计数原子增减：超上限影响 0 行 = 容量拒绝（503 语义）；任务异常结束也保证不下溢
+  reusedBy: []
+  version: '1.0'
+- id: R-06
+  name: 心跳计数偏差超过 1 且持续 3 个心跳周期 ⇒ 以执行机上报值强制覆写本地计数（例外路径、必须留痕；纠偏记录入台账）
+  ruleType: CROSS_OBJECT
+  description: 心跳计数偏差超过 1 且持续 3 个心跳周期 ⇒ 以执行机上报值强制覆写本地计数（例外路径、必须留痕；纠偏记录入台账）
+  expression: 心跳计数偏差超过 1 且持续 3 个心跳周期 ⇒ 以执行机上报值强制覆写本地计数（例外路径、必须留痕；纠偏记录入台账）
+  reusedBy: []
+  version: '1.0'
+- id: R-07
+  name: 注销拆除链次序固定
+  ruleType: CROSS_OBJECT
+  description: 注销拆除链次序固定：吊销双证书（调 O-CRT）→ 凭据置已吊销 → 状态置已注销；步骤失败告警不阻塞（残留入注销报告）
+  expression: 注销拆除链次序固定：吊销双证书（调 O-CRT）→ 凭据置已吊销 → 状态置已注销；步骤失败告警不阻塞（残留入注销报告）
+  reusedBy: []
+  version: '1.0'
+- id: R-08
+  name: 强制注销的前置 = 审批通过结论（取消他人运行中任务 = 中断上游域工作）；取消结果与等待超时入注销报告
+  ruleType: CROSS_OBJECT
+  description: 强制注销的前置 = 审批通过结论（取消他人运行中任务 = 中断上游域工作）；取消结果与等待超时入注销报告
+  expression: 强制注销的前置 = 审批通过结论（取消他人运行中任务 = 中断上游域工作）；取消结果与等待超时入注销报告
+  reusedBy: []
+  version: '1.0'
+- id: R-09
+  name: 状态对账与崩溃恢复以执行机为准回填任务状态（事实快照修正、必须留痕）；执行机侧任务丢失显式置败（原因分列），不静默
+  ruleType: CROSS_OBJECT
+  description: 状态对账与崩溃恢复以执行机为准回填任务状态（事实快照修正、必须留痕）；执行机侧任务丢失显式置败（原因分列），不静默
+  expression: 状态对账与崩溃恢复以执行机为准回填任务状态（事实快照修正、必须留痕）；执行机侧任务丢失显式置败（原因分列），不静默
+  reusedBy: []
+  version: '1.0'
+- id: R-10
+  name: 服务端证书被吊销 ⇒ 执行机置降级态
+  ruleType: CROSS_OBJECT
+  description: 服务端证书被吊销 ⇒ 执行机置降级态：拒绝新任务分发、运行中任务保护（不强制中断）
+  expression: 服务端证书被吊销 ⇒ 执行机置降级态：拒绝新任务分发、运行中任务保护（不强制中断）
+  reusedBy: []
+  version: '1.0'
+- id: R-11
+  name: TLS 显式降级互斥
+  ruleType: CROSS_OBJECT
+  description: TLS 显式降级互斥：降级声明 ⇔ 无任何证书绑定（双写禁止）；降级必须登记在案（声明 + 审计 + 界面红标）
+  expression: TLS 显式降级互斥：降级声明 ⇔ 无任何证书绑定（双写禁止）；降级必须登记在案（声明 + 审计 + 界面红标）
+  reusedBy: []
+  version: '1.0'
+- id: R-12
+  name: 白名单与无 shell 治理拒绝
+  ruleType: CROSS_OBJECT
+  description: 白名单与无 shell 治理拒绝：白名单外动作、含拼接风险的提交一律治理拒绝并审计（不是表单校验错误；拒绝记录可查）
+  expression: 白名单与无 shell 治理拒绝：白名单外动作、含拼接风险的提交一律治理拒绝并审计（不是表单校验错误；拒绝记录可查）
+  reusedBy: []
+  version: '1.0'

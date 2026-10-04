@@ -1,6 +1,8 @@
 // Package api —— Gin 路由注册(gopherforge internal/api 模式:公开组 + 登录组 + 权限中间件按路由挂载)。
 //
-// 路由表与重构前(hertz router/v1)逐条一致,API 契约不变。
+// 点火中心(ignition)fork 改造:底座客户申请示例路由(/api/customer)移除;
+// 业务路由按 OPIC-ARCH 前缀约定挂 /api/v1/ign/*,权限码 ign:FUNC-xx 对齐 M5 PERM-FUNC-xx。
+// 注意:gin 重复注册同一路径会 panic——静态段(/version/public)与参数段(/version/:id)已核对无冲突。
 package api
 
 import (
@@ -41,18 +43,11 @@ func SetupRoutes(r *gin.Engine) {
 
 		// 元数据(登录即可)
 		authed.GET("/meta/dictionaries", meta.Dictionaries)
-		authed.GET("/meta/customer-status", meta.CustomerStatus)
+		authed.GET("/meta/ign-status", meta.IgnStatus)
 		authed.POST("/assistant/chat", business.AssistantChat)
+		authed.POST("/assistant/query", business.AssistantQuery) // AI 只读 SQL 工具(白名单+审计)
 		authed.GET("/assistant/models", business.AssistantModels)
 		authed.GET("/meta/rules", meta.Rules)
-
-		// 客户申请(登录即可;业务校验在服务层)
-		authed.GET("/customer", business.CustomerList)
-		authed.GET("/customer/:id", business.CustomerGet)
-		authed.POST("/customer/draft", business.CustomerCreateDraft)
-		authed.PUT("/customer/:id/draft", business.CustomerUpdateDraft)
-		authed.POST("/customer/:id/submit", business.CustomerSubmit)
-		authed.POST("/customer/:id/withdraw", business.CustomerWithdraw)
 
 		// 审批中心(登录即可;归属校验在服务层)
 		authed.GET("/workbench/todo", business.WorkbenchTodo)
@@ -69,6 +64,71 @@ func SetupRoutes(r *gin.Engine) {
 		authed.GET("/flow/instances", flow.InstanceList)
 		authed.GET("/flow/instances/:id", flow.InstanceGet)
 		authed.GET("/flow/tasks", flow.TaskList)
+
+		// ---- 点火中心业务路由(/api/v1/ign,权限码挂载) ----
+		ign := authed.Group("/v1/ign")
+		perm := func(code string, handler gin.HandlerFunc) []gin.HandlerFunc {
+			return []gin.HandlerFunc{middleware.RequirePermission(code), handler}
+		}
+		{
+			// 字典(登录即可)
+			ign.GET("/dictionaries", business.IgnDictionaries)
+
+			// 交付版本(FUNC-01~08)
+			ign.GET("/version/public", perm("ign:FUNC-08", business.IgnPublicVersions)...) // 跨中心版本视图(执行机代理可查)
+			ign.GET("/version", perm("ign:FUNC-06", business.IgnVersionList)...)
+			ign.POST("/version", perm("ign:FUNC-01", business.IgnVersionCreate)...)
+			ign.GET("/version/:id", perm("ign:FUNC-07", business.IgnVersionGet)...)
+			ign.PUT("/version/:id", perm("ign:FUNC-02", business.IgnVersionUpdate)...)
+			ign.POST("/version/:id/download", perm("ign:FUNC-03", business.IgnVersionDownload)...)
+			ign.POST("/version/:id/archive", perm("ign:FUNC-04", business.IgnVersionArchive)...)
+			ign.DELETE("/version/:id", perm("ign:FUNC-05", business.IgnVersionDelete)...)
+			ign.POST("/version/:id/prepush", perm("ign:FUNC-09", business.IgnPrepushStart)...)
+			ign.POST("/version/:id/prepush/retry", perm("ign:FUNC-11", business.IgnPrepushRetry)...)
+			ign.PUT("/version/:id/manifest", perm("ign:FUNC-10", business.IgnManifestOverwrite)...)
+
+			// 镜像预推明细(FUNC-12)
+			ign.GET("/prepush", perm("ign:FUNC-12", business.IgnPrepushList)...)
+
+			// 执行机(FUNC-13~19;31 走 force-remove)
+			ign.GET("/executor/public", perm("ign:FUNC-19", business.IgnPublicExecutors)...) // 跨中心执行机视图(执行机代理可查)
+			ign.GET("/executor", perm("ign:FUNC-17", business.IgnExecutorList)...)
+			ign.POST("/executor", perm("ign:FUNC-13", business.IgnExecutorCreate)...)
+			ign.GET("/executor/:id", perm("ign:FUNC-18", business.IgnExecutorGet)...)
+			ign.POST("/executor/:id/token", perm("ign:FUNC-14", business.IgnExecutorToken)...)
+			ign.DELETE("/executor/:id", perm("ign:FUNC-15", business.IgnExecutorRetire)...)
+			ign.PUT("/executor/:id/capabilities", perm("ign:FUNC-16", business.IgnExecutorCaps)...)
+			ign.POST("/executor/:id/tls-decline", perm("ign:FUNC-21", business.IgnTlsDecline)...)
+			ign.POST("/executor/:id/force-remove", perm("ign:FUNC-31", business.IgnForceRemoveSave)...)
+
+			// 强制注销申请(提交/撤回 FUNC-31;列表登录即可,审批动作走 workbench)
+			ign.GET("/force-remove", business.IgnForceRemoveList)
+			ign.POST("/force-remove/:id/submit", perm("ign:FUNC-31", business.IgnForceRemoveSubmit)...)
+			ign.POST("/force-remove/:id/withdraw", perm("ign:FUNC-31", business.IgnForceRemoveWithdraw)...)
+
+			// 通道证书(FUNC-20/22)
+			ign.GET("/tls", perm("ign:FUNC-22", business.IgnTlsList)...)
+			ign.POST("/tls/:id/renew", perm("ign:FUNC-20", business.IgnTlsRenew)...)
+
+			// 执行任务(FUNC-23~28)
+			ign.POST("/task", perm("ign:FUNC-23", business.IgnTaskSubmit)...)
+			ign.GET("/task", perm("ign:FUNC-25", business.IgnTaskList)...)
+			ign.GET("/task/:taskNo", perm("ign:FUNC-26", business.IgnTaskGet)...)
+			ign.POST("/task/:taskNo/cancel", perm("ign:FUNC-24", business.IgnTaskCancel)...)
+
+			// 对账与纠偏台账(FUNC-28)
+			ign.GET("/reconcile", perm("ign:FUNC-28", business.IgnReconcileList)...)
+
+			// 运行观测(FUNC-29/30)
+			ign.GET("/stats", perm("ign:FUNC-29", business.IgnStats)...)
+			ign.GET("/params", perm("ign:FUNC-30", business.IgnParamsGet)...)
+			ign.PUT("/params", perm("ign:FUNC-30", business.IgnParamsSave)...)
+		}
+
+		// ---- 代理侧端点(IGN-ROLE-05 执行机代理服务身份;登录即可,写审计留痕) ----
+		authed.POST("/v1/ign/agent/bootstrap", business.IgnAgentBootstrap)     // 引导回连(R-03/R-04)
+		authed.POST("/v1/ign/agent/heartbeat", business.IgnAgentHeartbeat)     // 心跳回执(REF-03/R-06)
+		authed.POST("/v1/ign/task/:taskNo/complete", business.IgnTaskComplete) // 任务回执(R-05/R-09)
 
 		// ---- 管理控制台补齐(gopherforge 基准):日志审计/在线用户/公告/错误码/系统监控 ----
 		admin := api.Group("/admin", middleware.LoginRequired(), middleware.OperationAudit())
@@ -107,10 +167,7 @@ func SetupRoutes(r *gin.Engine) {
 		authed.GET("/resources", system.ResourceList)
 		authed.GET("/resources/tree", system.ResourceTree)
 
-		// ---- 写操作:按权限码挂载中间件 ----
-		perm := func(code string, handler gin.HandlerFunc) []gin.HandlerFunc {
-			return []gin.HandlerFunc{middleware.RequirePermission(code), handler}
-		}
+		// ---- 写操作:按权限码挂载中间件(perm 已在业务路由段定义) ----
 
 		// 用户管理
 		authed.POST("/users", perm("system:user:add", system.UserCreate)...)

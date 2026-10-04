@@ -1,33 +1,686 @@
-# M2 行为模型 - 客户示例域
 model_type: BEHAVIOR
-version: "1.0"
-domain: "客户管理"
-
+version: '1.0'
+domain: 交付执行域
 behaviors:
-  - id: Customer_SaveAsDraft
-    name: 客户申请暂存
-    behaviorType: COMMAND
-    targetAggregate: AGG-CUSTOMER-001
-    description: 保存客户申请为草稿
-  - id: Customer_Submit
-    name: 客户申请提交
-    behaviorType: COMMAND
-    targetAggregate: AGG-CUSTOMER-001
-    description: 提交客户申请并启动客户审批流
-    syncTriggers:
-      - flowRef: FLOW-CUSTOMER-APPROVAL
-  - id: Customer_QueryList
-    name: 客户查询
-    behaviorType: QUERY
-    targetAggregate: AGG-CUSTOMER-001
-    description: 按条件查询客户列表
-  - id: Customer_ApproveManager
-    name: 客户经理审批
-    behaviorType: COMMAND
-    targetAggregate: AGG-CUSTOMER-001
-    description: 客户经理审批节点
-  - id: Customer_ApproveGM
-    name: 部门总经理审批
-    behaviorType: COMMAND
-    targetAggregate: AGG-CUSTOMER-001
-    description: 部门总经理审批节点
+- id: FUNC-01
+  name: 版本登记
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-01
+  syncTriggers: []
+- id: FUNC-02
+  name: 版本登记信息修改
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-02
+  syncTriggers: []
+- id: FUNC-03
+  name: 触发发行包下载
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-03
+  syncTriggers: []
+- id: FUNC-04
+  name: 版本归档
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-04
+  syncTriggers: []
+- id: FUNC-05
+  name: 版本软删除
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-05
+  syncTriggers: []
+- id: FUNC-06
+  name: 版本列表查询
+  ownerEntity: AGG-IGN-01
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-06
+  syncTriggers: []
+  queryReportRef: REP-01
+- id: FUNC-07
+  name: 版本详情查询（含镜像清单与预推状态）
+  ownerEntity: AGG-IGN-01
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-07
+  syncTriggers: []
+  queryReportRef: REP-02
+- id: FUNC-08
+  name: 跨中心版本查询（集群创建视图）
+  ownerEntity: AGG-IGN-01
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-08
+  syncTriggers: []
+  queryReportRef: REP-03
+- id: FUNC-09
+  name: 触发镜像预推
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-09
+  syncTriggers: []
+- id: FUNC-10
+  name: 镜像清单人工覆写
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-10
+  syncTriggers: []
+- id: FUNC-11
+  name: 预推失败重试（断点续推）
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-11
+  syncTriggers: []
+- id: FUNC-12
+  name: 预推明细查询
+  ownerEntity: AGG-IGN-01
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-01
+  - INV-02
+  - INV-03
+  - INV-04
+  - INV-05
+  - INV-06
+  - INV-07
+  - R-02
+  requiredPermissions:
+  - PERM-FUNC-12
+  syncTriggers: []
+  queryReportRef: REP-04
+- id: FUNC-13
+  name: 注册远程执行机
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-13
+  syncTriggers: []
+- id: FUNC-14
+  name: 重新生成引导令牌（含锁定解锁）
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-14
+  syncTriggers: []
+- id: FUNC-15
+  name: 执行机注销（空闲）
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-15
+  syncTriggers: []
+- id: FUNC-16
+  name: 执行机能力标签调整
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-16
+  syncTriggers: []
+- id: FUNC-17
+  name: 执行机列表查询（含健康视图）
+  ownerEntity: AGG-IGN-03
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-17
+  syncTriggers: []
+  queryReportRef: REP-05
+- id: FUNC-18
+  name: 执行机详情查询
+  ownerEntity: AGG-IGN-03
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-18
+  syncTriggers: []
+  queryReportRef: REP-06
+- id: FUNC-19
+  name: 跨中心执行机查询（集群创建视图）
+  ownerEntity: AGG-IGN-03
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-19
+  syncTriggers: []
+  queryReportRef: REP-07
+- id: FUNC-20
+  name: 手动触发证书续期
+  ownerEntity: AGG-IGN-05
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-23
+  - INV-24
+  - INV-25
+  - INV-26
+  - INV-27
+  - R-03
+  - R-07
+  - R-11
+  requiredPermissions:
+  - PERM-FUNC-20
+  syncTriggers: []
+- id: FUNC-21
+  name: TLS 显式降级声明（实验环境）
+  ownerEntity: AGG-IGN-05
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-23
+  - INV-24
+  - INV-25
+  - INV-26
+  - INV-27
+  - R-03
+  - R-07
+  - R-11
+  requiredPermissions:
+  - PERM-FUNC-21
+  syncTriggers: []
+- id: FUNC-22
+  name: 证书绑定清单查询（含临期视图）
+  ownerEntity: AGG-IGN-05
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-23
+  - INV-24
+  - INV-25
+  - INV-26
+  - INV-27
+  - R-03
+  - R-07
+  - R-11
+  requiredPermissions:
+  - PERM-FUNC-22
+  syncTriggers: []
+  queryReportRef: REP-08
+- id: FUNC-23
+  name: 提交执行任务
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-30
+  - INV-31
+  - INV-32
+  - INV-33
+  requiredPermissions:
+  - PERM-FUNC-23
+  syncTriggers: []
+- id: FUNC-24
+  name: 取消执行任务
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-30
+  - INV-31
+  - INV-32
+  - INV-33
+  requiredPermissions:
+  - PERM-FUNC-24
+  syncTriggers: []
+- id: FUNC-25
+  name: 任务台账查询
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-30
+  - INV-31
+  - INV-32
+  - INV-33
+  requiredPermissions:
+  - PERM-FUNC-25
+  syncTriggers: []
+  queryReportRef: REP-09
+- id: FUNC-26
+  name: 任务详情查询
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-30
+  - INV-31
+  - INV-32
+  - INV-33
+  requiredPermissions:
+  - PERM-FUNC-26
+  syncTriggers: []
+  queryReportRef: REP-10
+- id: FUNC-27
+  name: 任务日志查询（中继回流视图）
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-30
+  - INV-31
+  - INV-32
+  - INV-33
+  requiredPermissions:
+  - PERM-FUNC-27
+  syncTriggers: []
+  queryReportRef: REP-11
+- id: FUNC-28
+  name: 对账与纠偏台账查询
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-30
+  - INV-31
+  - INV-32
+  - INV-33
+  requiredPermissions:
+  - PERM-FUNC-28
+  syncTriggers: []
+  queryReportRef: REP-12
+- id: FUNC-29
+  name: 统计总览查询
+  ownerEntity: AGG-DERIVED-VIEW
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules: []
+  requiredPermissions:
+  - PERM-FUNC-29
+  syncTriggers: []
+  queryReportRef: REP-13
+- id: FUNC-30
+  name: 运行参数维护
+  ownerEntity: AGG-DERIVED-VIEW
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules: []
+  requiredPermissions:
+  - PERM-FUNC-30
+  syncTriggers: []
+- id: FUNC-31
+  name: 强制注销 · 提交申请
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-31
+  syncTriggers: []
+- id: FUNC-32
+  name: 强制注销 · 通过
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-32
+  syncTriggers: []
+- id: FUNC-33
+  name: 强制注销 · 驳回
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-11
+  - INV-12
+  - INV-13
+  - INV-14
+  - INV-15
+  - INV-16
+  - INV-17
+  - INV-18
+  - R-01
+  - R-04
+  - R-05
+  - R-06
+  - R-08
+  - R-09
+  - R-10
+  requiredPermissions:
+  - PERM-FUNC-33
+  syncTriggers: []

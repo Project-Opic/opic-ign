@@ -1,102 +1,806 @@
-# M1 对象模型 - 客户示例域
 model_type: OBJECT
-version: "1.0"
-domain: "客户管理"
-
+version: '1.0'
+domain: 交付执行域
 aggregates:
-  - id: AGG-CUSTOMER-001
-    name: 客户
-    alias: Customer
-    aggregateType: AGGREGATE_ROOT
-    description: 客户申请登记对象（示例业务，用于验证技术底座）
-    lifecycle: [草稿, 待客户经理审批, 待部门总经理审批, 已通过, 已驳回]
-    tags: [示例域]
-    attributes:
-      - name: customerNo
-        label: 客户编号
-        type: String
-        required: true
-        unique: true
-      - name: customerName
-        label: 客户名称
-        type: String
-        required: true
-      - name: customerType
-        label: 客户类型
-        type: DictionaryRef
-        dictionaryRef:
-          dictionaryId: DICT-CUSTOMER-TYPE
-          typeCode: CUSTOMER_TYPE
-        required: true
-      - name: industry
-        label: 所属行业
-        type: String
-        required: false
-      - name: contactPerson
-        label: 联系人
-        type: String
-        required: false
-      - name: contactPhone
-        label: 联系电话
-        type: String
-        required: false
-      - name: customerLevel
-        label: 客户等级
-        type: DictionaryRef
-        dictionaryRef:
-          dictionaryId: DICT-CUSTOMER-LEVEL
-          typeCode: CUSTOMER_LEVEL
-        required: true
-      - name: address
-        label: 客户地址
-        type: String
-        required: false
-      - name: remark
-        label: 备注
-        type: String
-        required: false
-      - name: status
-        label: 审批状态
-        type: Enum
-        enumValues: [草稿, 待客户经理审批, 待部门总经理审批, 已通过, 已驳回]
-        required: true
-        defaultValue: 草稿
-
+- id: AGG-IGN-01
+  name: 交付版本
+  alias: DeliveryVersion
+  aggregateType: AGGREGATE_ROOT
+  description: 对象分类
+  lifecycle:
+  - 启用
+  - 停用
+  tags:
+  - 对象分类
+  attributes:
+  - name: versionNo
+    label: 版本编号
+    type: String
+    required: true
+    unique: true
+  - name: name
+    label: 版本名
+    type: String
+    required: true
+    unique: true
+  - name: displayName
+    label: 显示名
+    type: String
+    required: false
+    unique: false
+  - name: toolVersion
+    label: 交付工具版本
+    type: String
+    required: true
+    unique: false
+  - name: orchestratorVersion
+    label: 编排引擎版本
+    type: String
+    required: true
+    unique: false
+  - name: runtimeVersion
+    label: 容器运行时版本
+    type: String
+    required: true
+    unique: false
+  - name: etcdVersion
+    label: etcd 版本
+    type: String
+    required: true
+    unique: false
+  - name: cniPlugin
+    label: CNI 插件
+    type: Dict
+    required: true
+    unique: false
+  - name: cniVersion
+    label: CNI 版本
+    type: String
+    required: true
+    unique: false
+  - name: corednsVersion
+    label: CoreDNS 版本
+    type: String
+    required: true
+    unique: false
+  - name: tarballUrl
+    label: 发行包地址
+    type: String
+    required: true
+    unique: false
+  - name: tarballSha256
+    label: 发行包摘要
+    type: String
+    required: false
+    unique: false
+  - name: cachePath
+    label: 缓存解压路径
+    type: String
+    required: false
+    unique: false
+  - name: imageManifest
+    label: 镜像清单
+    type: String
+    required: true
+    unique: false
+  - name: defaultRegistryRef
+    label: 默认仓库项目
+    type: Ref
+    required: false
+    unique: false
+  - name: status
+    label: 版本状态
+    type: Dict
+    required: true
+    unique: false
+  - name: archivedAt
+    label: 归档时间
+    type: DateTime
+    required: false
+    unique: false
+  - name: createdAt
+    label: 登记时间
+    type: DateTime
+    required: true
+    unique: false
+  entities: []
+- id: AGG-IGN-02
+  name: 镜像预推明细
+  alias: ImagePrepushItem
+  aggregateType: AGGREGATE_ROOT
+  description: 对象分类
+  lifecycle:
+  - 启用
+  - 停用
+  tags:
+  - 对象分类
+  attributes:
+  - name: versionRef
+    label: 所属版本
+    type: Ref
+    required: true
+    unique: true
+  - name: repo
+    label: 镜像仓库
+    type: String
+    required: true
+    unique: true
+  - name: tag
+    label: 镜像标签
+    type: String
+    required: true
+    unique: true
+  - name: digest
+    label: 内容摘要
+    type: String
+    required: false
+    unique: false
+  - name: sizeBytes
+    label: 体积（字节）
+    type: Integer
+    required: false
+    unique: false
+  - name: prepushStatus
+    label: 预推状态
+    type: Dict
+    required: true
+    unique: false
+  - name: failReason
+    label: 失败原因
+    type: String
+    required: false
+    unique: false
+  - name: prepushedAt
+    label: 最近预推时间
+    type: DateTime
+    required: false
+    unique: false
+  - name: createdAt
+    label: 登记时间
+    type: DateTime
+    required: true
+    unique: false
+  entities: []
+- id: AGG-IGN-03
+  name: 执行机
+  alias: Executor
+  aggregateType: AGGREGATE_ROOT
+  description: 对象分类
+  lifecycle:
+  - 启用
+  - 停用
+  tags:
+  - 对象分类
+  attributes:
+  - name: executorNo
+    label: 执行机编号
+    type: String
+    required: true
+    unique: true
+  - name: name
+    label: 名称
+    type: String
+    required: true
+    unique: true
+  - name: displayName
+    label: 显示名
+    type: String
+    required: false
+    unique: false
+  - name: executorType
+    label: 类型
+    type: Dict
+    required: true
+    unique: false
+  - name: assetRef
+    label: 资产标识
+    type: Ref
+    required: false
+    unique: false
+  - name: host
+    label: 服务地址
+    type: String
+    required: true
+    unique: false
+  - name: port
+    label: 服务端口
+    type: Integer
+    required: true
+    unique: false
+  - name: capabilityFlags
+    label: 能力标签
+    type: String
+    required: true
+    unique: false
+  - name: status
+    label: 治理状态
+    type: Dict
+    required: true
+    unique: false
+  - name: concurrentTasksMax
+    label: 并发上限
+    type: Integer
+    required: true
+    unique: false
+  - name: currentTasksCount
+    label: 当前任务数
+    type: Integer
+    required: true
+    unique: false
+  - name: lastHeartbeatAt
+    label: 最近心跳时间
+    type: DateTime
+    required: false
+    unique: false
+  - name: lastHeartbeatPayload
+    label: 最近心跳载荷
+    type: String
+    required: false
+    unique: false
+  - name: bootstrappedAt
+    label: 引导完成时间
+    type: DateTime
+    required: false
+    unique: false
+  - name: createdAt
+    label: 登记时间
+    type: DateTime
+    required: true
+    unique: false
+  entities: []
+- id: AGG-IGN-04
+  name: 引导凭据
+  alias: BootstrapCredential
+  aggregateType: AGGREGATE_ROOT
+  description: 对象分类
+  lifecycle:
+  - 启用
+  - 停用
+  tags:
+  - 对象分类
+  attributes:
+  - name: credentialNo
+    label: 凭据编号
+    type: String
+    required: true
+    unique: true
+  - name: executorRef
+    label: 所属执行机
+    type: Ref
+    required: true
+    unique: true
+  - name: tokenEnc
+    label: 令牌密文
+    type: String
+    required: false
+    unique: false
+  - name: tokenNonce
+    label: 令牌 nonce
+    type: String
+    required: false
+    unique: false
+  - name: issuedAt
+    label: 生成时间
+    type: DateTime
+    required: true
+    unique: false
+  - name: expiresAt
+    label: 过期时间
+    type: DateTime
+    required: true
+    unique: false
+  - name: failCount
+    label: 失败计数
+    type: Integer
+    required: true
+    unique: false
+  - name: credStatus
+    label: 凭据状态
+    type: Dict
+    required: true
+    unique: false
+  - name: createdAt
+    label: 登记时间
+    type: DateTime
+    required: true
+    unique: false
+  entities: []
+- id: AGG-IGN-05
+  name: 通道证书绑定
+  alias: ExecutorTlsBinding
+  aggregateType: AGGREGATE_ROOT
+  description: 对象分类
+  lifecycle:
+  - 启用
+  - 停用
+  tags:
+  - 对象分类
+  attributes:
+  - name: bindingNo
+    label: 绑定编号
+    type: String
+    required: true
+    unique: true
+  - name: executorRef
+    label: 所属执行机
+    type: Ref
+    required: true
+    unique: false
+  - name: certRole
+    label: 证书用途
+    type: Dict
+    required: true
+    unique: false
+  - name: certRef
+    label: 凭据标识
+    type: Ref
+    required: true
+    unique: false
+  - name: commonName
+    label: 通用名称
+    type: String
+    required: true
+    unique: true
+  - name: notBefore
+    label: 生效起
+    type: DateTime
+    required: true
+    unique: false
+  - name: notAfter
+    label: 生效止
+    type: DateTime
+    required: true
+    unique: false
+  - name: renewalCount
+    label: 续期次数
+    type: Integer
+    required: true
+    unique: false
+  - name: lastRenewedAt
+    label: 最近续期时间
+    type: DateTime
+    required: false
+    unique: false
+  - name: bindStatus
+    label: 绑定状态
+    type: Dict
+    required: true
+    unique: false
+  - name: createdAt
+    label: 登记时间
+    type: DateTime
+    required: true
+    unique: false
+  entities: []
+- id: AGG-IGN-06
+  name: 执行任务
+  alias: ExecTask
+  aggregateType: AGGREGATE_ROOT
+  description: 对象分类
+  lifecycle:
+  - 启用
+  - 停用
+  tags:
+  - 对象分类
+  attributes:
+  - name: taskNo
+    label: 任务编号
+    type: String
+    required: true
+    unique: true
+  - name: executorRef
+    label: 所属执行机
+    type: Ref
+    required: true
+    unique: false
+  - name: action
+    label: 执行动作
+    type: Dict
+    required: true
+    unique: false
+  - name: args
+    label: 动作参数
+    type: String
+    required: true
+    unique: false
+  - name: env
+    label: 环境变量
+    type: String
+    required: false
+    unique: false
+  - name: workingDir
+    label: 工作目录
+    type: String
+    required: false
+    unique: false
+  - name: clusterRef
+    label: 关联集群
+    type: Ref
+    required: true
+    unique: false
+  - name: requestTokenDigest
+    label: 请求令牌摘要
+    type: String
+    required: true
+    unique: true
+  - name: remoteTaskId
+    label: 远端任务标识
+    type: String
+    required: false
+    unique: false
+  - name: taskStatus
+    label: 任务状态
+    type: Dict
+    required: true
+    unique: false
+  - name: exitCode
+    label: 退出码
+    type: Integer
+    required: false
+    unique: false
+  - name: failReason
+    label: 失败原因
+    type: Dict
+    required: false
+    unique: false
+  - name: timeoutSeconds
+    label: 超时秒数
+    type: Integer
+    required: true
+    unique: false
+  - name: startedAt
+    label: 开始时间
+    type: DateTime
+    required: false
+    unique: false
+  - name: endedAt
+    label: 结束时间
+    type: DateTime
+    required: false
+    unique: false
+  - name: durationMs
+    label: 耗时（毫秒）
+    type: Integer
+    required: false
+    unique: false
+  - name: submittedBy
+    label: 提交人
+    type: String
+    required: true
+    unique: false
+  - name: createdAt
+    label: 创建时间
+    type: DateTime
+    required: true
+    unique: false
+  entities: []
 data_dictionaries:
-  - id: DICT-CUSTOMER-TYPE
-    name: 客户类型字典
-    types:
-      - typeCode: CUSTOMER_TYPE
-        typeName: 客户类型
-        items:
-          - code: PERSONAL
-            label: 个人客户
-            enabled: true
-            sortOrder: 10
-          - code: ENTERPRISE
-            label: 企业客户
-            enabled: true
-            sortOrder: 20
-          - code: GOVERNMENT
-            label: 政府客户
-            enabled: true
-            sortOrder: 30
-
-  - id: DICT-CUSTOMER-LEVEL
-    name: 客户等级字典
-    types:
-      - typeCode: CUSTOMER_LEVEL
-        typeName: 客户等级
-        items:
-          - code: NORMAL
-            label: 普通客户
-            enabled: true
-            sortOrder: 10
-          - code: IMPORTANT
-            label: 重要客户
-            enabled: true
-            sortOrder: 20
-          - code: STRATEGIC
-            label: 战略客户
-            enabled: true
-            sortOrder: 30
+- id: DICT-IGN_VERSION_STATUS
+  name: IGN_VERSION_STATUS
+  types:
+  - typeCode: IGN_VERSION_STATUS
+    typeName: IGN_VERSION_STATUS
+    items:
+    - code: DRAFT
+      label: 草稿
+      enabled: true
+      sortOrder: 10
+    - code: DOWNLOADING
+      label: 下载中
+      enabled: true
+      sortOrder: 20
+    - code: READY
+      label: 就绪
+      enabled: true
+      sortOrder: 30
+    - code: PREPUSHING
+      label: 预推中
+      enabled: true
+      sortOrder: 40
+    - code: PREPUSHED
+      label: 已预推
+      enabled: true
+      sortOrder: 50
+    - code: PARTIALLY_PREPUSHED
+      label: 部分预推
+      enabled: true
+      sortOrder: 60
+    - code: ARCHIVED
+      label: 已归档（终态）
+      enabled: true
+      sortOrder: 70
+    - code: FAILED
+      label: 失败
+      enabled: true
+      sortOrder: 80
+- id: DICT-IGN_EXECUTOR_STATUS
+  name: IGN_EXECUTOR_STATUS
+  types:
+  - typeCode: IGN_EXECUTOR_STATUS
+    typeName: IGN_EXECUTOR_STATUS
+    items:
+    - code: ENROLLING
+      label: 待引导
+      enabled: true
+      sortOrder: 10
+    - code: READY
+      label: 就绪
+      enabled: true
+      sortOrder: 20
+    - code: LOCKED
+      label: 已锁定
+      enabled: true
+      sortOrder: 30
+    - code: DEGRADED
+      label: 已降级
+      enabled: true
+      sortOrder: 40
+    - code: RENEWAL_PENDING
+      label: 待续期
+      enabled: true
+      sortOrder: 50
+    - code: REMOVED
+      label: 已注销（终态）
+      enabled: true
+      sortOrder: 60
+- id: DICT-IGN_CRED_STATUS
+  name: IGN_CRED_STATUS
+  types:
+  - typeCode: IGN_CRED_STATUS
+    typeName: IGN_CRED_STATUS
+    items:
+    - code: ACTIVE
+      label: 生效
+      enabled: true
+      sortOrder: 10
+    - code: CONSUMED
+      label: 已消耗
+      enabled: true
+      sortOrder: 20
+    - code: EXPIRED
+      label: 已过期
+      enabled: true
+      sortOrder: 30
+    - code: REVOKED
+      label: 已吊销
+      enabled: true
+      sortOrder: 40
+- id: DICT-IGN_TLS_BIND_STATUS
+  name: IGN_TLS_BIND_STATUS
+  types:
+  - typeCode: IGN_TLS_BIND_STATUS
+    typeName: IGN_TLS_BIND_STATUS
+    items:
+    - code: PENDING
+      label: 待生效
+      enabled: true
+      sortOrder: 10
+    - code: ACTIVE
+      label: 已生效
+      enabled: true
+      sortOrder: 20
+    - code: RENEWING
+      label: 续期中
+      enabled: true
+      sortOrder: 30
+    - code: REVOKED
+      label: 已吊销（终态）
+      enabled: true
+      sortOrder: 40
+    - code: FAILED
+      label: 失败
+      enabled: true
+      sortOrder: 50
+- id: DICT-IGN_TASK_STATUS
+  name: IGN_TASK_STATUS
+  types:
+  - typeCode: IGN_TASK_STATUS
+    typeName: IGN_TASK_STATUS
+    items:
+    - code: RUNNING
+      label: 执行中
+      enabled: true
+      sortOrder: 10
+    - code: CANCELLING
+      label: 取消中
+      enabled: true
+      sortOrder: 20
+    - code: COMPLETED
+      label: 完成
+      enabled: true
+      sortOrder: 30
+    - code: FAILED
+      label: 失败
+      enabled: true
+      sortOrder: 40
+    - code: CANCELLED
+      label: 已取消
+      enabled: true
+      sortOrder: 50
+- id: DICT-IGN_PREPUSH_STATUS
+  name: IGN_PREPUSH_STATUS
+  types:
+  - typeCode: IGN_PREPUSH_STATUS
+    typeName: IGN_PREPUSH_STATUS
+    items:
+    - code: PENDING
+      label: 待预推
+      enabled: true
+      sortOrder: 10
+    - code: SUCCESS
+      label: 成功
+      enabled: true
+      sortOrder: 20
+    - code: FAILED
+      label: 失败
+      enabled: true
+      sortOrder: 30
+    - code: SKIPPED
+      label: 已跳过（仓库侧已存在）
+      enabled: true
+      sortOrder: 40
+- id: DICT-IGN_TASK_FAIL_REASON
+  name: IGN_TASK_FAIL_REASON
+  types:
+  - typeCode: IGN_TASK_FAIL_REASON
+    typeName: IGN_TASK_FAIL_REASON
+    items:
+    - code: TIMEOUT
+      label: 超时
+      enabled: true
+      sortOrder: 10
+    - code: RELAY_LOST
+      label: 日志中继中断
+      enabled: true
+      sortOrder: 20
+    - code: EXECUTOR_RESTARTED
+      label: 执行机重启丢失
+      enabled: true
+      sortOrder: 30
+    - code: ACTION_DENIED
+      label: 动作被拒绝
+      enabled: true
+      sortOrder: 40
+    - code: EXECUTOR_ERROR
+      label: 执行机执行错误
+      enabled: true
+      sortOrder: 50
+- id: DICT-IGN_EXECUTOR_TYPE
+  name: IGN_EXECUTOR_TYPE
+  types:
+  - typeCode: IGN_EXECUTOR_TYPE
+    typeName: IGN_EXECUTOR_TYPE
+    items:
+    - code: LOCAL
+      label: 本地
+      enabled: true
+      sortOrder: 10
+    - code: REMOTE
+      label: 远程
+      enabled: true
+      sortOrder: 20
+- id: DICT-IGN_CERT_ROLE
+  name: IGN_CERT_ROLE
+  types:
+  - typeCode: IGN_CERT_ROLE
+    typeName: IGN_CERT_ROLE
+    items:
+    - code: SERVER
+      label: 服务端
+      enabled: true
+      sortOrder: 10
+    - code: CLIENT
+      label: 客户端
+      enabled: true
+      sortOrder: 20
+- id: DICT-IGN_CNI_PLUGIN
+  name: IGN_CNI_PLUGIN
+  types:
+  - typeCode: IGN_CNI_PLUGIN
+    typeName: IGN_CNI_PLUGIN
+    items:
+    - code: CALICO
+      label: Calico
+      enabled: true
+      sortOrder: 10
+    - code: CILIUM
+      label: Cilium
+      enabled: true
+      sortOrder: 20
+    - code: FLANNEL
+      label: Flannel
+      enabled: true
+      sortOrder: 30
+- id: DICT-IGN_CAPABILITY
+  name: IGN_CAPABILITY
+  types:
+  - typeCode: IGN_CAPABILITY
+    typeName: IGN_CAPABILITY
+    items:
+    - code: DEPLOY
+      label: 集群部署
+      enabled: true
+      sortOrder: 10
+    - code: SKOPEO
+      label: 镜像复制
+      enabled: true
+      sortOrder: 20
+    - code: BACKUP
+      label: 备份恢复
+      enabled: true
+      sortOrder: 30
+    - code: PREFLIGHT
+      label: 预检
+      enabled: true
+      sortOrder: 40
+    - code: OFFLINE
+      label: 离线环境
+      enabled: true
+      sortOrder: 50
+- id: DICT-IGN_ACTION
+  name: IGN_ACTION
+  types:
+  - typeCode: IGN_ACTION
+    typeName: IGN_ACTION
+    items:
+    - code: ezctl.new
+      label: ezctl.new
+      enabled: true
+      sortOrder: 10
+    - code: ezctl.setup
+      label: ezctl.setup
+      enabled: true
+      sortOrder: 20
+    - code: ezctl.start
+      label: ezctl.start
+      enabled: true
+      sortOrder: 30
+    - code: ezctl.stop
+      label: ezctl.stop
+      enabled: true
+      sortOrder: 40
+    - code: ezctl.add-node
+      label: ezctl.add-node
+      enabled: true
+      sortOrder: 50
+    - code: ezctl.del-node
+      label: ezctl.del-node
+      enabled: true
+      sortOrder: 60
+    - code: ezctl.upgrade
+      label: ezctl.upgrade
+      enabled: true
+      sortOrder: 70
+    - code: ezctl.backup
+      label: ezctl.backup
+      enabled: true
+      sortOrder: 80
+    - code: ezctl.restore
+      label: ezctl.restore
+      enabled: true
+      sortOrder: 90
+    - code: ezctl.destroy
+      label: ezctl.destroy
+      enabled: true
+      sortOrder: 100
+    - code: ezctl.ca-renew
+      label: ezctl.ca-renew
+      enabled: true
+      sortOrder: 110
+    - code: ezctl.kcfg-adm
+      label: ezctl.kcfg-adm
+      enabled: true
+      sortOrder: 120
+    - code: scripts.image_prepush
+      label: scripts.image_prepush
+      enabled: true
+      sortOrder: 130
+    - code: scripts.health_check
+      label: scripts.health_check
+      enabled: true
+      sortOrder: 140
+    - code: scripts.tls_renew
+      label: 白名单固定枚举，扩白名单须需求变更
+      enabled: true
+      sortOrder: 150
+aggregate_associations: []

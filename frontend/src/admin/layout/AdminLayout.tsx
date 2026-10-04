@@ -98,7 +98,7 @@ function buildMenuDefs(hasSystem: boolean, hasFlow: boolean): AdminMenuDef[] {
       label: '业务管理',
       icon: <CheckSquareOutlined />,
       children: [
-        { key: '/admin/biz/customers', label: '客户管理', icon: <UserOutlined /> },
+        { key: '/admin/biz/executor', label: '执行机台账', icon: <UserOutlined /> },
         { key: '/admin/biz/approval', label: '审批工作台', icon: <CheckSquareOutlined /> },
       ],
     })
@@ -184,7 +184,7 @@ function ConsoleShell() {
       key: 'workbench',
       icon: <SwapOutlined />,
       label: '用户工作台',
-      onClick: () => navigate('/customer/apply'),
+      onClick: () => navigate('/ign/version'),
     },
     { type: 'divider' },
     {

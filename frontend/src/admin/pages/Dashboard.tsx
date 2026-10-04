@@ -174,7 +174,7 @@ export default function AdminDashboard() {
     { label: '新建用户', icon: <UserAddOutlined />, path: '/admin/system/users', visible: hasPerm('system:user:add') },
     { label: '角色管理', icon: <TeamOutlined />, path: '/admin/system/roles', visible: hasPermPrefix(permissions, 'system:') },
     { label: '发布流程', icon: <RocketOutlined />, path: '/admin/flow/definitions', visible: hasPerm('flow:definition:publish') || hasPerm('flow:definition:add') },
-    { label: '用户工作台', icon: <SwapOutlined />, path: '/customer/apply', visible: true },
+    { label: '用户工作台', icon: <SwapOutlined />, path: '/ign/version', visible: true },
   ].filter((a) => a.visible)
 
   const recent = (instances || []).slice(0, 5)
@@ -402,7 +402,7 @@ export default function AdminDashboard() {
             <Card
               className="stat-card liquid-dash-stat is-alive"
               hoverable
-              onClick={() => navigate('/customer/apply')}
+              onClick={() => navigate('/ign/version')}
               styles={{ body: { padding: 20 } }}
               style={{ '--tint': 'rgba(14, 165, 233, 0.13)' } as React.CSSProperties}
             >

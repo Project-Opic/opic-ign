@@ -1,47 +1,243 @@
-# M5 主体模型 - 客户示例域
 model_type: ACTOR
-version: "1.0"
-domain: "客户管理"
-
+version: '1.0'
+domain: 交付执行域
+actors:
+- actorId: ACTOR-IGN-ROLE-01
+  name: 交付管理员
+  actorType: HUMAN
+  roles:
+  - IGN-ROLE-01
+- actorId: ACTOR-IGN-ROLE-02
+  name: 平台运维管理员
+  actorType: HUMAN
+  roles:
+  - IGN-ROLE-02
+- actorId: ACTOR-IGN-ROLE-03
+  name: 交付审计员
+  actorType: HUMAN
+  roles:
+  - IGN-ROLE-03
+- actorId: ACTOR-IGN-ROLE-04
+  name: 交付只读用户
+  actorType: HUMAN
+  roles:
+  - IGN-ROLE-04
+- actorId: ACTOR-IGN-ROLE-05
+  name: 执行机代理
+  actorType: HUMAN
+  roles:
+  - IGN-ROLE-05
 roles:
-  - roleId: ROLE-ADMIN
-    name: 系统管理员
-    permissions: ["*"]
-  - roleId: ROLE-SALES
-    name: 业务人员
-    permissions:
-      - PERM-CUSTOMER-SAVE
-      - PERM-CUSTOMER-SUBMIT
-      - PERM-CUSTOMER-QUERY
-  - roleId: ROLE-CUSTOMER-MANAGER
-    name: 客户经理
-    permissions:
-      - PERM-CUSTOMER-APPROVE-MANAGER
-      - PERM-CUSTOMER-QUERY
-  - roleId: ROLE-DEPT-GM
-    name: 部门总经理
-    permissions:
-      - PERM-CUSTOMER-APPROVE-GM
-      - PERM-CUSTOMER-QUERY
-
+- roleId: IGN-ROLE-01
+  name: 交付管理员
+  permissions:
+  - PERM-FUNC-01
+  - PERM-FUNC-02
+  - PERM-FUNC-03
+  - PERM-FUNC-04
+  - PERM-FUNC-05
+  - PERM-FUNC-06
+  - PERM-FUNC-07
+  - PERM-FUNC-09
+  - PERM-FUNC-10
+  - PERM-FUNC-11
+  - PERM-FUNC-12
+  - PERM-FUNC-13
+  - PERM-FUNC-14
+  - PERM-FUNC-15
+  - PERM-FUNC-16
+  - PERM-FUNC-17
+  - PERM-FUNC-18
+  - PERM-FUNC-20
+  - PERM-FUNC-22
+  - PERM-FUNC-23
+  - PERM-FUNC-24
+  - PERM-FUNC-25
+  - PERM-FUNC-26
+  - PERM-FUNC-27
+  - PERM-FUNC-29
+  - PERM-FUNC-31
+- roleId: IGN-ROLE-02
+  name: 平台运维管理员
+  permissions:
+  - PERM-FUNC-06
+  - PERM-FUNC-07
+  - PERM-FUNC-12
+  - PERM-FUNC-17
+  - PERM-FUNC-18
+  - PERM-FUNC-21
+  - PERM-FUNC-22
+  - PERM-FUNC-25
+  - PERM-FUNC-26
+  - PERM-FUNC-27
+  - PERM-FUNC-28
+  - PERM-FUNC-29
+  - PERM-FUNC-30
+  - PERM-FUNC-32
+  - PERM-FUNC-33
+- roleId: IGN-ROLE-03
+  name: 交付审计员
+  permissions:
+  - PERM-FUNC-06
+  - PERM-FUNC-07
+  - PERM-FUNC-12
+  - PERM-FUNC-17
+  - PERM-FUNC-18
+  - PERM-FUNC-22
+  - PERM-FUNC-25
+  - PERM-FUNC-26
+  - PERM-FUNC-27
+  - PERM-FUNC-28
+  - PERM-FUNC-29
+- roleId: IGN-ROLE-04
+  name: 交付只读用户
+  permissions:
+  - PERM-FUNC-06
+  - PERM-FUNC-07
+  - PERM-FUNC-12
+  - PERM-FUNC-17
+  - PERM-FUNC-18
+  - PERM-FUNC-22
+  - PERM-FUNC-25
+  - PERM-FUNC-26
+  - PERM-FUNC-27
+  - PERM-FUNC-29
+- roleId: IGN-ROLE-05
+  name: 执行机代理
+  permissions:
+  - PERM-FUNC-08
+  - PERM-FUNC-19
+  - PERM-FUNC-23
 permissions:
-  - permissionId: PERM-CUSTOMER-SAVE
-    targetType: BEHAVIOR
-    targetRef: Customer_SaveAsDraft
-    dataScope: ALL
-  - permissionId: PERM-CUSTOMER-SUBMIT
-    targetType: BEHAVIOR
-    targetRef: Customer_Submit
-    dataScope: ALL
-  - permissionId: PERM-CUSTOMER-QUERY
-    targetType: BEHAVIOR
-    targetRef: Customer_QueryList
-    dataScope: ALL
-  - permissionId: PERM-CUSTOMER-APPROVE-MANAGER
-    targetType: BEHAVIOR
-    targetRef: Customer_ApproveManager
-    dataScope: ALL
-  - permissionId: PERM-CUSTOMER-APPROVE-GM
-    targetType: BEHAVIOR
-    targetRef: Customer_ApproveGM
-    dataScope: ALL
+- permissionId: PERM-FUNC-01
+  targetType: BEHAVIOR
+  targetRef: FUNC-01
+  dataScope: ALL
+- permissionId: PERM-FUNC-02
+  targetType: BEHAVIOR
+  targetRef: FUNC-02
+  dataScope: ALL
+- permissionId: PERM-FUNC-03
+  targetType: BEHAVIOR
+  targetRef: FUNC-03
+  dataScope: ALL
+- permissionId: PERM-FUNC-04
+  targetType: BEHAVIOR
+  targetRef: FUNC-04
+  dataScope: ALL
+- permissionId: PERM-FUNC-05
+  targetType: BEHAVIOR
+  targetRef: FUNC-05
+  dataScope: ALL
+- permissionId: PERM-FUNC-06
+  targetType: BEHAVIOR
+  targetRef: FUNC-06
+  dataScope: ALL
+- permissionId: PERM-FUNC-07
+  targetType: BEHAVIOR
+  targetRef: FUNC-07
+  dataScope: ALL
+- permissionId: PERM-FUNC-08
+  targetType: BEHAVIOR
+  targetRef: FUNC-08
+  dataScope: ALL
+- permissionId: PERM-FUNC-09
+  targetType: BEHAVIOR
+  targetRef: FUNC-09
+  dataScope: ALL
+- permissionId: PERM-FUNC-10
+  targetType: BEHAVIOR
+  targetRef: FUNC-10
+  dataScope: ALL
+- permissionId: PERM-FUNC-11
+  targetType: BEHAVIOR
+  targetRef: FUNC-11
+  dataScope: ALL
+- permissionId: PERM-FUNC-12
+  targetType: BEHAVIOR
+  targetRef: FUNC-12
+  dataScope: ALL
+- permissionId: PERM-FUNC-13
+  targetType: BEHAVIOR
+  targetRef: FUNC-13
+  dataScope: ALL
+- permissionId: PERM-FUNC-14
+  targetType: BEHAVIOR
+  targetRef: FUNC-14
+  dataScope: ALL
+- permissionId: PERM-FUNC-15
+  targetType: BEHAVIOR
+  targetRef: FUNC-15
+  dataScope: ALL
+- permissionId: PERM-FUNC-16
+  targetType: BEHAVIOR
+  targetRef: FUNC-16
+  dataScope: ALL
+- permissionId: PERM-FUNC-17
+  targetType: BEHAVIOR
+  targetRef: FUNC-17
+  dataScope: ALL
+- permissionId: PERM-FUNC-18
+  targetType: BEHAVIOR
+  targetRef: FUNC-18
+  dataScope: ALL
+- permissionId: PERM-FUNC-19
+  targetType: BEHAVIOR
+  targetRef: FUNC-19
+  dataScope: ALL
+- permissionId: PERM-FUNC-20
+  targetType: BEHAVIOR
+  targetRef: FUNC-20
+  dataScope: ALL
+- permissionId: PERM-FUNC-21
+  targetType: BEHAVIOR
+  targetRef: FUNC-21
+  dataScope: ALL
+- permissionId: PERM-FUNC-22
+  targetType: BEHAVIOR
+  targetRef: FUNC-22
+  dataScope: ALL
+- permissionId: PERM-FUNC-23
+  targetType: BEHAVIOR
+  targetRef: FUNC-23
+  dataScope: ALL
+- permissionId: PERM-FUNC-24
+  targetType: BEHAVIOR
+  targetRef: FUNC-24
+  dataScope: ALL
+- permissionId: PERM-FUNC-25
+  targetType: BEHAVIOR
+  targetRef: FUNC-25
+  dataScope: ALL
+- permissionId: PERM-FUNC-26
+  targetType: BEHAVIOR
+  targetRef: FUNC-26
+  dataScope: ALL
+- permissionId: PERM-FUNC-27
+  targetType: BEHAVIOR
+  targetRef: FUNC-27
+  dataScope: ALL
+- permissionId: PERM-FUNC-28
+  targetType: BEHAVIOR
+  targetRef: FUNC-28
+  dataScope: ALL
+- permissionId: PERM-FUNC-29
+  targetType: BEHAVIOR
+  targetRef: FUNC-29
+  dataScope: ALL
+- permissionId: PERM-FUNC-30
+  targetType: BEHAVIOR
+  targetRef: FUNC-30
+  dataScope: ALL
+- permissionId: PERM-FUNC-31
+  targetType: BEHAVIOR
+  targetRef: FUNC-31
+  dataScope: ALL
+- permissionId: PERM-FUNC-32
+  targetType: BEHAVIOR
+  targetRef: FUNC-32
+  dataScope: ALL
+- permissionId: PERM-FUNC-33
+  targetType: BEHAVIOR
+  targetRef: FUNC-33
+  dataScope: ALL

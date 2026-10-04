@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Popover } from 'antd'
+import { Popover, Table } from 'antd'
 import { DoubleRightOutlined, RobotOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
-import { assistantApi } from '../api/assistant'
+import { assistantApi, type AssistantTable } from '../api/assistant'
 import { http } from '../api/request'
 
 // AI 智能助理工作区（用户工作台与管理控制台共用的右侧常驻面板,用户规则 2026-10）。
 // 复用 .app-chat* 玻璃样式(user-workbench.css,[data-glass] 作用域双端生效);
 // 折叠态由宿主布局持久化;对话携带模型选择(与悬浮抽屉共享 localStorage 选择)。
+// O-IGN 语境:本体注册表注入 + 只读 SQL 工具(仅 SELECT/WITH + ign 白名单 + 强制 LIMIT + 审计)。
 interface ChatMsg {
   id: number
   role: 'user' | 'assistant'
   text: string
   action?: string
+  table?: AssistantTable
 }
 
 interface ModelOption {
@@ -42,9 +44,9 @@ export default function AIChatWorkspace({
   const [busy, setBusy] = useState(false)
   const [hints, setHints] = useState<string[]>([
     '我有哪些待办？',
-    '我的客户申请进展？',
-    '审批怎么操作？',
-    '流程有哪些节点？',
+    '现在有多少个在线节点？',
+    '连通策略变更怎么审批？',
+    'SELECT node_name, node_status FROM coverage_node',
   ])
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -90,6 +92,21 @@ export default function AIChatWorkspace({
       setMessages((m) => [...m, { id: Date.now(), role: 'user', text: q }])
       setBusy(true)
       try {
+        // 只读 SQL 工具直达:以 select/with 开头的输入不经 LLM,直接安全执行并表格渲染
+        const lq = q.toLowerCase()
+        if (lq.startsWith('select') || lq.startsWith('with')) {
+          const table = await assistantApi.sql(q)
+          setMessages((m) => [
+            ...m,
+            {
+              id: Date.now() + 1,
+              role: 'assistant',
+              text: `已执行只读查询,返回 ${table.count} 行(最多 100 行,仅白名单表)。`,
+              table,
+            },
+          ])
+          return
+        }
         const reply = await assistantApi.chat(q, sel.accountId, sel.model, sel.temp)
         setMessages((m) => [...m, { id: Date.now() + 1, role: 'assistant', text: reply.answer, action: reply.action }])
         if (reply.hints?.length) setHints(reply.hints)
@@ -213,6 +230,19 @@ export default function AIChatWorkspace({
               }}
             >
               {m.text}
+              {m.role === 'assistant' && m.table && (m.table.columns?.length || 0) > 0 ? (
+                <div style={{ marginTop: 8, maxWidth: 360, overflowX: 'auto' }}>
+                  <Table
+                    size="small"
+                    bordered
+                    rowKey={(_, idx) => String(idx)}
+                    pagination={false}
+                    scroll={{ y: 220, x: 'max-content' }}
+                    columns={(m.table.columns || []).map((c) => ({ title: c, dataIndex: c, key: c, ellipsis: true }))}
+                    dataSource={m.table.rows || []}
+                  />
+                </div>
+              ) : null}
               {m.role === 'assistant' && m.action ? (
                 <div style={{ marginTop: 6 }}>
                   <a
@@ -233,8 +263,8 @@ export default function AIChatWorkspace({
               <div className="app-chat-empty-icon">
                 <RobotOutlined />
               </div>
-              <p className="app-chat-empty-title">我是 OPIC AI 助理</p>
-              <p className="app-chat-empty-desc">可以查待办、客户进展、审批指引——试试下方问题</p>
+              <p className="app-chat-empty-title">我是 OPIC 网络连通域助理</p>
+              <p className="app-chat-empty-desc">可查节点/组/凭据/令牌/策略台账、待办审批与运行视图,也支持直接输入 SELECT 只读查询——试试下方问题</p>
             </div>
           ) : null}
           {hints.length > 0 && !busy ? (

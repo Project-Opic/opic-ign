@@ -1,4 +1,4 @@
-// AI 智能助理端点(登录即可;只读)。chat 支持选择模型账号/模型/温度。
+// AI 智能助理端点(登录即可;只读)。chat 支持选择模型账号/模型/温度;query 为只读 SQL 工具。
 package business
 
 import (
@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gitcode.com/opic-ontology/opic-techbase/internal/api/common"
 	"gitcode.com/opic-ontology/opic-techbase/internal/service"
 	"gitcode.com/opic-ontology/opic-techbase/pkg/errcode"
 )
@@ -36,4 +37,16 @@ func AssistantChat(c *gin.Context) {
 // AssistantModels GET /api/assistant/models —— 模型选择器数据源(启用账号×模型目录)。
 func AssistantModels(c *gin.Context) {
 	c.JSON(200, errcode.OK(gin.H{"models": service.AssistantModelOptions()}))
+}
+
+// AssistantQuery POST /api/assistant/query —— 只读 SQL 工具(仅 SELECT/WITH + ign_* 白名单 + 强制 LIMIT + 审计)
+func AssistantQuery(c *gin.Context) {
+	body := common.BindJSON(c)
+	u := common.UserOf(c)
+	out, err := service.AssistantRunReadOnlySQL(u.ID, u.Username, common.Trim(body["sql"]))
+	if err != nil {
+		common.FailJSON(c, err)
+		return
+	}
+	common.OKJSON(c, out, "")
 }

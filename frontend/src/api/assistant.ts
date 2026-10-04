@@ -1,5 +1,13 @@
-/** AI 智能助理 API（v4：多模型选择/参数档位） */
+/** AI 智能助理 API（O-IGN 语境：多模型选择/参数档位 + 只读 SQL 工具） */
 import { http } from './request'
+
+/** 只读 SQL 查询结果(渲染协议 table) */
+export interface AssistantTable {
+  columns: string[]
+  rows: Record<string, unknown>[]
+  count: number
+  sql: string
+}
 
 export interface AssistantReply {
   answer: string
@@ -24,4 +32,6 @@ export const assistantApi = {
       temperature: temperature ?? 0,
     }),
   models: () => http.get<{ models: ModelOption[] }>('/api/assistant/models'),
+  /** 只读 SQL 工具(仅 SELECT/WITH + ign 白名单 + 强制 LIMIT + 审计) */
+  sql: (sqlText: string) => http.post<AssistantTable>('/api/assistant/query', { sql: sqlText }),
 }

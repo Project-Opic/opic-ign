@@ -5,8 +5,6 @@ import (
 
 	"gorm.io/gorm"
 
-	"gitcode.com/opic-ontology/opic-techbase/internal/infra"
-	"gitcode.com/opic-ontology/opic-techbase/internal/service/engine"
 	"gitcode.com/opic-ontology/opic-techbase/internal/store"
 	"gitcode.com/opic-ontology/opic-techbase/pkg/errcode"
 )
@@ -350,262 +348,36 @@ func UrgeTask(taskID int64, user UserInfo) error {
 	return err
 }
 
+// toInt any→int64。注意:PostgreSQL INTEGER/SMALLINT 列经 pgx 返回 int32/int16,
+// 仅处理 int64/int/float64 会静默得 0(DBS/AST/REG 均已踩过),统一委托 Int()。
 func toInt(v any) int64 {
-	switch x := v.(type) {
-	case int64:
-		return x
-	case int:
-		return int64(x)
-	case float64:
-		return int64(x)
-	}
-	return 0
+	return Int(v)
 }
 
-// ---------- 客户申请(customer_service.py) ----------
+// ---------- 执行机强制注销申请同步(FLOW-PROC-APP-01;R-08) ----------
 
-const flowCustomerCode = "FLOW-CUSTOMER-APPROVAL"
-
-var roleStatusMap = map[string]string{
-	"CUSTOMER_MANAGER":     "待客户经理审批",
-	"DEPT_GENERAL_MANAGER": "待部门总经理审批",
-}
-
-var customerRequired = []string{"customer_name", "customer_type", "customer_level"}
-
-func validateCustomer(data map[string]any) error {
-	for _, f := range customerRequired {
-		if Str(data[f]) == "" {
-			return Fail(errcode.ErrParam, "客户名称、客户类型、客户等级为必填项")
-		}
-	}
-	return nil
-}
-
-func genCustomerNo() string {
-	return "CUS" + nowCompact()
-}
-
-// ListCustomers 客户列表。
-func ListCustomers(page, size int, filters map[string]any) (*Page, error) {
-	where := "WHERE 1=1"
-	args := []any{}
-	if v := Str(filters["customer_no"]); v != "" {
-		where += " AND customer_no LIKE ?"
-		args = append(args, "%"+v+"%")
-	}
-	if v := Str(filters["customer_name"]); v != "" {
-		where += " AND customer_name LIKE ?"
-		args = append(args, "%"+v+"%")
-	}
-	if v := Str(filters["status"]); v != "" {
-		where += " AND status = ?"
-		args = append(args, v)
-	}
-	total, err := qCount(`SELECT COUNT(*) FROM customer_application `+where, args...)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := qList(`SELECT * FROM customer_application `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`,
-		append(args, size, (page-1)*size)...)
-	if err != nil {
-		return nil, err
-	}
-	if rows == nil {
-		rows = []map[string]any{}
-	}
-	return &Page{List: rows, Total: total, PageV: page, Size: size}, nil
-}
-
-// GetCustomer 客户详情。
-func GetCustomer(customerID int64) (map[string]any, error) {
-	row, err := qOne(`SELECT * FROM customer_application WHERE id = ?`, customerID)
-	if err != nil {
-		return nil, err
-	}
-	if row == nil {
-		return nil, NotFound("客户申请")
-	}
-	return row, nil
-}
-
-// CreateCustomerDraft 暂存草稿。
-func CreateCustomerDraft(data map[string]any, user UserInfo) (map[string]any, error) {
-	if err := validateCustomer(data); err != nil {
-		return nil, err
-	}
-	customerNo := Str(data["customer_no"])
-	if customerNo == "" {
-		customerNo = genCustomerNo()
-	}
-	if exists, err := qOne(`SELECT id FROM customer_application WHERE customer_no = ?`, customerNo); err != nil {
-		return nil, err
-	} else if exists != nil {
-		return nil, DupErr("客户编号")
-	}
-	realName := user.Username
-	if rn := Str(data["applicant_name"]); rn != "" {
-		realName = rn
-	}
-	if _, err := qExec(`
-		INSERT INTO customer_application
-			(customer_no, customer_name, customer_type, industry, contact_person, contact_phone,
-			 customer_level, address, remark, status, applicant_id, applicant_name)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '草稿', ?, ?)`,
-		customerNo, data["customer_name"], data["customer_type"], data["industry"],
-		data["contact_person"], data["contact_phone"], data["customer_level"],
-		data["address"], data["remark"], user.ID, realName); err != nil {
-		return nil, err
-	}
-	created, err := qOne(`SELECT id FROM customer_application WHERE customer_no = ?`, customerNo)
-	if err != nil {
-		return nil, err
-	}
-	return GetCustomer(toInt(created["id"]))
-}
-
-// UpdateCustomerDraft 修改草稿(仅草稿/已驳回)。
-func UpdateCustomerDraft(customerID int64, data map[string]any, user UserInfo) (map[string]any, error) {
-	customer, err := GetCustomer(customerID)
-	if err != nil {
-		return nil, err
-	}
-	status := Str(customer["status"])
-	if status != "草稿" && status != "已驳回" {
-		return nil, Fail(errcode.ErrState, "仅草稿或已驳回状态可修改")
-	}
-	if err := validateCustomer(data); err != nil {
-		return nil, err
-	}
-	if _, err := qExec(`
-		UPDATE customer_application SET customer_name=?, customer_type=?, industry=?, contact_person=?,
-			contact_phone=?, customer_level=?, address=?, remark=?, status='草稿',
-			updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS')
-		WHERE id=?`,
-		data["customer_name"], data["customer_type"], data["industry"], data["contact_person"],
-		data["contact_phone"], data["customer_level"], data["address"], data["remark"], customerID); err != nil {
-		return nil, err
-	}
-	return GetCustomer(customerID)
-}
-
-// SubmitCustomer 提交(启动审批流)。
-func SubmitCustomer(customerID int64, user UserInfo) (map[string]any, error) {
-	customer, err := GetCustomer(customerID)
-	if err != nil {
-		return nil, err
-	}
-	status := Str(customer["status"])
-	if status != "草稿" && status != "已驳回" {
-		return nil, Fail(errcode.ErrState, "当前状态不可提交")
-	}
-	if err := validateCustomer(customer); err != nil {
-		return nil, err
-	}
-	var instanceID int64
-	err = tx(func(db *gorm.DB) error {
-		definition, err := store.One(db, `SELECT * FROM flow_definition WHERE code = ? AND status = 1`, flowCustomerCode)
-		if err != nil {
-			return err
-		}
-		if definition == nil {
-			return Fail(errcode.ErrFlowNotPublished, "客户申请审批流程未发布")
-		}
-		eng := engine.NewWithInfra(db, infra.EB(), infra.WF(), infra.SLAHours(), infra.TemporalDriver())
-		instanceID, err = eng.Start(toInt(definition["id"]), Str(customer["customer_no"]),
-			[]any{"AGG-CUSTOMER-001"}, map[string]any{"customer_id": customerID}, user.ID)
-		if err != nil {
-			return err
-		}
-		realName := Str(customer["applicant_name"])
-		if realName == "" {
-			realName = user.Username
-		}
-		_, err = store.Exec(db, `
-			UPDATE customer_application SET instance_id=?, status='待客户经理审批', applicant_id=?, applicant_name=?,
-			updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
-			instanceID, user.ID, realName, customerID)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return GetCustomer(customerID)
-}
-
-// WithdrawCustomer 撤回(仅待客户经理审批且审批人未处理)。
-func WithdrawCustomer(customerID int64, user UserInfo) (map[string]any, error) {
-	customer, err := GetCustomer(customerID)
-	if err != nil {
-		return nil, err
-	}
-	if Str(customer["status"]) != "待客户经理审批" {
-		return nil, Fail(errcode.ErrState, "仅待客户经理审批且未处理前可撤回")
-	}
-	instanceID := toInt(customer["instance_id"])
-	if instanceID == 0 {
-		return nil, Fail(errcode.ErrNotFound, "流程实例不存在")
-	}
-	err = tx(func(db *gorm.DB) error {
-		done, err := store.Count(db, `
-			SELECT COUNT(*) FROM flow_task WHERE instance_id=? AND status IN ('DONE','CANCEL') AND action IS NOT NULL`, instanceID)
-		if err != nil {
-			return err
-		}
-		if done > 0 {
-			return Fail(errcode.ErrState, "审批人已处理，无法撤回")
-		}
-		if _, err := store.Exec(db, `
-			UPDATE flow_instance SET status='TERMINATED', ended_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id=?`, instanceID); err != nil {
-			return err
-		}
-		if _, err := store.Exec(db, `UPDATE flow_task SET status='CANCEL' WHERE instance_id=? AND status='TODO'`, instanceID); err != nil {
-			return err
-		}
-		_, err = store.Exec(db, `
-			UPDATE customer_application SET status='草稿', instance_id=NULL,
-			updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id=?`, customerID)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return GetCustomer(customerID)
-}
-
-// SyncCustomerStatusFromInstance 实例状态→客户状态(审批通过/驳回/进行中节点)。
-func SyncCustomerStatusFromInstance(db *gorm.DB, instanceID int64) (string, error) {
+// SyncForceRemoveFromInstance 实例状态→强制注销申请状态(审批通过/驳回;进行中节点不做副写——
+// 状态由 workbench 审批动作驱动,通过时直接进入拆除链)。
+func SyncForceRemoveFromInstance(db *gorm.DB, instanceID int64) (string, error) {
 	inst, err := store.One(db, `SELECT * FROM flow_instance WHERE id = ?`, instanceID)
 	if err != nil || inst == nil {
 		return "", err
 	}
-	customer, err := store.One(db, `SELECT * FROM customer_application WHERE instance_id = ?`, instanceID)
-	if err != nil || customer == nil {
+	apply, err := store.One(db, `SELECT * FROM ign_force_remove WHERE instance_id = ? AND flag = 1`, instanceID)
+	if err != nil || apply == nil {
 		return "", err
 	}
 	var status string
-	switch inst["status"] {
+	switch Str(inst["status"]) {
 	case "APPROVED":
 		status = "已通过"
 	case "REJECTED":
 		status = "已驳回"
-	case "RUNNING":
-		todo, err := store.One(db, `SELECT * FROM flow_task WHERE instance_id=? AND status='TODO' ORDER BY id LIMIT 1`, instanceID)
-		if err != nil {
-			return "", err
-		}
-		if todo != nil {
-			if mapped, ok := roleStatusMap[Str(todo["role_ref"])]; ok {
-				status = mapped
-			} else {
-				status = Str(customer["status"])
-			}
-		}
 	}
-	if status != "" && status != Str(customer["status"]) {
-		_, err := store.Exec(db, `
-			UPDATE customer_application SET status=?, updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
-			status, customer["id"])
+	if status != "" && status != Str(apply["status"]) {
+		_, err = store.Exec(db, `
+			UPDATE ign_force_remove SET status=?, updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
+			status, apply["id"])
 		return status, err
 	}
 	return status, nil

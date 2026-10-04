@@ -1,3 +1,90 @@
+# opic-ignition-center —— O-IGN 点火中心(交付执行域能力中心,gopherforge 技术栈)
+
+OPIC 开放智能算力平台的 **点火中心**(MCC 交付执行域):交付版本目录 / 镜像预推 / 执行机注册与引导 /
+通道证书绑定 / 白名单执行任务 / 对账与纠偏(AGG-IGN-01..06)的完整落地;承接技术底座 opic-techbase 的技术基线。
+
+> **血缘**:平台级 fork 自 `opic-ai/opic-techbase`(技术基线事实源 `gitcode.com/opic-ontology/opic-techbase`)。
+> 底座仅承载技术设施层,业务语义层归本中心 —— 中心业务独立演进,底座安全修复单向回流。
+>
+> 中心参数:`CENTER_CODE=ign`;opicdb `schema=ign`;NATS `stream=OPIC_IGN`、主题域 `opic.ign.>`;
+> Temporal `task_queue=ign`;API 前缀 `/api/v1/ign/*`;权限码 `ign:FUNC-01..33`(对齐 M5 PERM-FUNC-xx)。
+
+## O-IGN 落地总览(ontology-driven-dev 阶段三)
+
+### 三步改造
+
+| 步骤 | 落点 |
+|---|---|
+| ① 七模型入库 | `models/`(M1 对象/M2 行为/M3 规则/M5 主体/M6 流程/M7 报表/MU 界面 + manifest.json);M6 `FLOW-PROC-APP-01` 补可执行 nodeGraph(含 edges,审批引擎按 approval_outcome 选路) |
+| ② 中心隔离 | `configs/config.yml`(center_code/schema/stream/subject/task_queue 显式 ign)、`.env.example` |
+| ③ 业务 DDL | `migrations/000004_business_ign.sql`(9 表:delivery_version / image_prepush_item / executor / bootstrap_credential / executor_tls_binding / exec_task / ign_force_remove / ign_reconcile_log / ign_platform_config + task_log);底座示例表 customer_application 自 000001 移除 |
+
+### 十步实现(行为 → 服务层 → 页面)
+
+- **聚合根 6**:交付版本(VER)/镜像预推明细(IMG)/执行机(EXE)/引导凭据(BCR)/通道证书绑定(TLS)/执行任务(TSK);
+  编号三段式 `{三位前缀}-YYYYMMDD-{4 位流水}`,服务层事务内 `pg_advisory_xact_lock` 防重号,唯一索引兜底。
+- **行为 33**(FUNC-01..33):版本登记/修改/下载/归档/软删/列表/详情/跨中心视图/预推/覆写/断点续推/预推明细;
+  执行机注册/令牌重签/注销/能力调整/列表/详情/跨中心视图;TLS 续期/降级/清单;任务提交/取消/台账/详情/日志/对账;
+  统计总览/运行参数;强制注销提交/通过/驳回。
+- **规则中文提示**:INV-01..33 + R-01..R-12 关键路径全部落服务层(如 INV-04「组件版本组创建后不可修改——会被选进集群配置的契约字段」、
+  R-12「白名单外动作与拼接风险提交一律治理拒绝并审计」);校验时机对齐模型(保存即校验 vs 仅提交时强制校验,见 `/api/v1/ign/dictionaries` 的 checkpoint_note)。
+- **审批流 1**:执行机强制注销(FLOW-PROC-APP-01,单级,IGN-ROLE-02 审批);提交(保存草稿/提交两种形态)→
+  通过 = 取消运行任务 + 拆除链(R-07 次序固定:吊销双证书 → 凭据置已吊销 → 状态置已注销)→ 注销报告留痕;驳回 = 状态不变、意见留痕。
+- **页面 7**(MU frmIgn* 七屏):版本目录(/ign/version)/发行包与镜像(/ign/image)/执行机操作台(/ign/executor)/
+  通道安全台(/ign/tls)/任务桥接(/ign/task,主从布局)/日志与对账(/ign/log,页签布局)/运行观测(/ign/ops);另含审批中心三页适配。
+- **事件**:`opic.ign.version.* / executor.* / prepush.* / task.* / tls.* / ops.*`(旁路发布,失败仅记日志)。
+- **AI 对话框**:本体注入(system 提示词注入七模型摘要:聚合/表白名单/关键规则/编号口径)+
+  只读 SQL 工具(`POST /api/assistant/query`:仅 SELECT/WITH、ign_* 白名单、强制 LIMIT 100、每次写审计;
+  **白名单刻意不含 bootstrap_credential** —— INV-22 令牌三要素不得出现在任何查询响应)。
+- **代理侧端点**(IGN-ROLE-05 服务身份,登录即可 + 审计):`/api/v1/ign/agent/bootstrap`(引导回连,R-03/R-04)、
+  `/api/v1/ign/agent/heartbeat`(心跳,R-06 计数纠偏)、`/api/v1/ign/task/:taskNo/complete`(任务回执,R-05/R-09)。
+- **跨域留痕口径**(不静默降级):asset_ref/cluster_ref/cert_ref 只存标识不直查他域表;
+  O-AST 资产存在性核对、O-CRT 证书签发/吊销、mTLS 任务转发三处跨中心通道阶段三未接入,均在响应/注销报告/对账台账如实留痕。
+
+### 账号矩阵(M5 种子;local 模式口令均为 admin123)
+
+| 账号 | 角色 | 权限概要 |
+|---|---|---|
+| admin | 系统管理员 | 超管位(代码层注入 `*`) |
+| ignadmin | IGN-ROLE-01 交付管理员 | 版本/预推/执行机/证书/任务全部业务写 + FUNC-31 提交 |
+| opsadmin | IGN-ROLE-02 平台运维管理员 | 降级声明/运行参数/审批 FUNC-32·33 |
+| auditor | IGN-ROLE-03 交付审计员 | 全菜单只读 + 对账台账 |
+| ignviewer | IGN-ROLE-04 交付只读用户 | 目录/台账只读 |
+| (服务身份) | IGN-ROLE-05 执行机代理 | FUNC-08/19/23(跨中心视图与任务提交) |
+
+### 快速启动
+
+```bash
+# 前置:Go 1.27+;PostgreSQL 16(opicdb,中心 schema ign);可选 NATS(JetStream)
+go build -o bin/ignition-center ./cmd/techbase
+CREATE SCHEMA 项:psql -c "CREATE SCHEMA IF NOT EXISTS ign AUTHORIZATION postgres;"(库 opicdb)
+
+CENTER_CODE=ign DB_HOST=<pg> DB_PORT=5433 DB_USER=postgres DB_PASSWORD=*** DB_NAME=opicdb DB_SCHEMA=ign \
+REDIS_ENABLED=false EVENTBUS_DRIVER=nats EVENTBUS_URL=nats://<nats>:14222 \
+EVENTBUS_USERNAME=opic EVENTBUS_PASSWORD=*** WORKFLOW_DRIVER=local METRICS_ENABLED=true APP_PORT=9709 \
+./bin/ignition-center
+# 启动即完成:goose 迁移(000001..000004)→ M5 种子(角色/权限/菜单/账号/参数缺省/LOCAL 执行机)→ M6 审批流导入
+```
+
+### 冒烟验证(已实测通过)
+
+```
+health=200;验证码登录 admin/admin123;
+FUNC-01 版本登记 VER-20261004-0001 → INV-01 重名阻断 / INV-02 格式阻断 / INV-04 契约冻结拦截;
+FUNC-13 注册 EXE-20261004-0003 → INV-12 人工 LOCAL 拒绝 → R-04 错误令牌失败计数 → R-03 引导回连(双绑定+凭据 CONSUMED → READY);
+R-12 白名单外(rm -rf /)与拼接风险提交治理拒绝并审计;FUNC-23 提交 TSK-* → INV-31 防重放返回原任务 → 环境变量脱敏展示;
+FUNC-24 取消 → CANCELLING;R-05 LOCAL 并发 4/4 容量拒绝;
+FUNC-31 强制注销 RMV-*(影响面 R-08 强制展示)→ IGN-ROLE-02 待办(归属校验:他人审批被拒)→ FUNC-32 通过 → R-07 拆除链 → REMOVED + 注销报告留痕;
+FUNC-33 驳回路径:状态不变意见留痕;R-06 心跳纠偏(本地 0 → 上报 9,留痕入台账);
+FUNC-29 统计 / FUNC-30 参数维护;AI 对话 + 只读 SQL(白名单/写拒绝/凭据表 INV-22 排除)。
+```
+
+权限矩阵抽测:ignviewer(FUNC-06 可查 / FUNC-01 写被拒 SYS9103);审批归属:非受理角色被拒「该任务不属于当前用户」。
+
+---
+
+# opic-techbase(底座原文,作为本仓技术基线参照)
+
 # opic-techbase —— OPIC 技术底座(gopherforge 技术栈)
 
 OPIC 开放智能算力平台的 **Go 技术底座**:《系统管理 + 流程引擎需求规格说明书》的可运行技术空框架,

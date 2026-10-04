@@ -80,10 +80,14 @@ func WorkbenchTodo(userID int64, page, size int) (*Page, error) {
 	}
 	rows, err := qList(`
 		SELECT t.*, i.business_key, i.creator_id, i.started_at,
-		       c.customer_name, c.customer_no, c.applicant_name
+		       c.apply_no, c.reason, c.status AS apply_status, c.impact_snapshot,
+		       e.executor_no, e.name AS executor_name, e.status AS executor_status,
+		       cu.real_name AS creator_name
 		FROM flow_task t
 		JOIN flow_instance i ON i.id = t.instance_id
-		LEFT JOIN customer_application c ON c.instance_id = i.id
+		LEFT JOIN ign_force_remove c ON c.instance_id = i.id
+		LEFT JOIN executor e ON e.id = c.executor_id
+		LEFT JOIN sys_user cu ON cu.id = i.creator_id
 		WHERE `+where+` ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
 		append(args, size, (page-1)*size)...)
 	if err != nil {
@@ -91,6 +95,9 @@ func WorkbenchTodo(userID int64, page, size int) (*Page, error) {
 	}
 	if rows == nil {
 		rows = []map[string]any{}
+	}
+	for _, r := range rows {
+		r["impact_snapshot"] = ParseJSONText(Str(r["impact_snapshot"]), map[string]any{})
 	}
 	return &Page{List: rows, Total: total, PageV: page, Size: size}, nil
 }
@@ -116,10 +123,14 @@ func WorkbenchDone(userID int64, page, size int) (*Page, error) {
 		return nil, err
 	}
 	rows, err := qList(`
-		SELECT t.*, i.business_key, c.customer_name, c.customer_no
+		SELECT t.*, i.business_key, i.creator_id, i.started_at,
+		       c.apply_no, c.reason, c.status AS apply_status,
+		       e.executor_no, e.name AS executor_name, cu.real_name AS creator_name
 		FROM flow_task t
 		JOIN flow_instance i ON i.id = t.instance_id
-		LEFT JOIN customer_application c ON c.instance_id = i.id
+		LEFT JOIN ign_force_remove c ON c.instance_id = i.id
+		LEFT JOIN executor e ON e.id = c.executor_id
+		LEFT JOIN sys_user cu ON cu.id = i.creator_id
 		WHERE `+where+` ORDER BY t.done_at DESC LIMIT ? OFFSET ?`,
 		append(args, size, (page-1)*size)...)
 	if err != nil {
@@ -131,18 +142,24 @@ func WorkbenchDone(userID int64, page, size int) (*Page, error) {
 	return &Page{List: rows, Total: total, PageV: page, Size: size}, nil
 }
 
-// WorkbenchRequested 我的申请。
+// WorkbenchRequested 我的申请(本中心=我提交的执行机强制注销申请;FLOW-PROC-APP-01)。
 func WorkbenchRequested(userID int64, page, size int) (*Page, error) {
-	total, err := qCount(`SELECT COUNT(*) FROM customer_application WHERE applicant_id=?`, userID)
+	total, err := qCount(`
+		SELECT COUNT(*) FROM flow_instance i
+		WHERE i.creator_id=? AND i.variables LIKE '%"business_type":"IGN_FORCE_REMOVE"%'`, userID)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := qList(`
-		SELECT c.*, i.status AS flow_status
-		FROM customer_application c
-		LEFT JOIN flow_instance i ON i.id = c.instance_id
-		WHERE c.applicant_id=?
-		ORDER BY c.id DESC LIMIT ? OFFSET ?`, userID, size, (page-1)*size)
+		SELECT i.id AS instance_id, i.business_key AS apply_no, i.status AS flow_status,
+		       i.started_at, c.reason, c.status AS apply_status, c.approve_comment,
+		       c.approved_name, c.approved_at, c.removal_report,
+		       e.executor_no, e.name AS executor_name, e.status AS executor_status
+		FROM flow_instance i
+		LEFT JOIN ign_force_remove c ON c.instance_id = i.id
+		LEFT JOIN executor e ON e.id = c.executor_id
+		WHERE i.creator_id=? AND i.variables LIKE '%"business_type":"IGN_FORCE_REMOVE"%'
+		ORDER BY i.id DESC LIMIT ? OFFSET ?`, userID, size, (page-1)*size)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +249,8 @@ func ApproveTask(taskID int64, comment string, user UserInfo) (any, error) {
 		if _, err := eng.Approve(toInt(task["id"]), comment, user.ID, user.Username); err != nil {
 			return nil, err
 		}
-		if _, err := SyncCustomerStatusFromInstance(db, toInt(task["instance_id"])); err != nil {
+		// 业务侧效果(同事务):FUNC-32 审批通过 → 进入拆除链(R-07 次序固定:吊销双证书 → 凭据置已吊销 → 状态置已注销)
+		if err := ApplyIgnForceRemoveOutcome(db, toInt(task["instance_id"]), true, user, comment); err != nil {
 			return nil, err
 		}
 		return toInt(task["instance_id"]), nil
@@ -245,7 +263,8 @@ func RejectTask(taskID int64, comment string, user UserInfo) (any, error) {
 		if _, err := eng.Reject(toInt(task["id"]), comment, user.ID, user.Username); err != nil {
 			return nil, err
 		}
-		if _, err := SyncCustomerStatusFromInstance(db, toInt(task["instance_id"])); err != nil {
+		// FUNC-33 驳回:执行机状态不变,意见留痕(可修正后重新提交申请)
+		if err := ApplyIgnForceRemoveOutcome(db, toInt(task["instance_id"]), false, user, comment); err != nil {
 			return nil, err
 		}
 		return toInt(task["instance_id"]), nil
@@ -265,7 +284,7 @@ func ReturnTask(taskID int64, targetActivityID, comment string, user UserInfo) (
 		if _, err := eng.ReturnTo(toInt(task["id"]), targetActivityID, comment, user.ID, user.Username); err != nil {
 			return nil, err
 		}
-		if _, err := SyncCustomerStatusFromInstance(db, toInt(task["instance_id"])); err != nil {
+		if _, err := SyncForceRemoveFromInstance(db, toInt(task["instance_id"])); err != nil {
 			return nil, err
 		}
 		return nil, nil

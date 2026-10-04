@@ -158,30 +158,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
--- ============ 示例业务表:客户申请 ============
-
-CREATE TABLE IF NOT EXISTS customer_application (
-    id BIGSERIAL PRIMARY KEY,
-    customer_no VARCHAR(50) UNIQUE,
-    customer_name VARCHAR(100) NOT NULL,
-    customer_type VARCHAR(20),
-    industry VARCHAR(50),
-    contact_person VARCHAR(50),
-    contact_phone VARCHAR(20),
-    customer_level VARCHAR(20),
-    address VARCHAR(200),
-    remark VARCHAR(500),
-    status VARCHAR(30) DEFAULT '草稿',
-    applicant_id BIGINT,
-    applicant_name VARCHAR(50),
-    instance_id BIGINT,
-    created_at TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
-    updated_at TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
-);
+-- ============ 业务表 ============
+-- 点火中心(ignition)fork 改造:底座示例业务表 customer_application 已移除,
+-- 业务表见 000004_business_ign.sql(交付版本/镜像预推明细/执行机/引导凭据/通道证书绑定/执行任务)。
 
 -- +goose Down
 
-DROP TABLE IF EXISTS customer_application;
 DROP TABLE IF EXISTS audit_logs;
 DROP TABLE IF EXISTS flow_history;
 DROP TABLE IF EXISTS flow_task;

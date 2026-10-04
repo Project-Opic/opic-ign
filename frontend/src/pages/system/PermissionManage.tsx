@@ -236,7 +236,7 @@ export default function PermissionManage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="权限编码" name="code" rules={[{ required: true, message: '请输入权限编码' }]}>
-                <Input placeholder="如 customer:save" />
+                <Input placeholder="如 ign:FUNC-01" />
               </Form.Item>
             </Col>
             <Col span={12}>

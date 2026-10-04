@@ -33,6 +33,16 @@ import {
   SunOutlined,
   MoonOutlined,
   ApartmentOutlined,
+  AppstoreOutlined,
+  CodeSandboxOutlined,
+  DashboardOutlined,
+  CompassOutlined,
+  ClusterOutlined,
+  GlobalOutlined,
+  ThunderboltOutlined,
+  ShareAltOutlined,
+  PartitionOutlined,
+  AuditOutlined,
   RobotOutlined,
   CommentOutlined,
   DoubleRightOutlined,
@@ -70,6 +80,20 @@ const ICON_MAP: Record<string, React.ComponentType<{ style?: React.CSSProperties
   Shield: SafetyOutlined,
   Key: KeyOutlined,
   Menu: MenuOutlined,
+  SafetyCertificate: SafetyOutlined,
+  DeploymentUnit: DeploymentUnitOutlined,
+  Cluster: ClusterOutlined,
+  Global: GlobalOutlined,
+  Compass: CompassOutlined,
+  ShareAlt: ShareAltOutlined,
+  Partition: PartitionOutlined,
+  Apartment: ApartmentOutlined,
+  Thunderbolt: ThunderboltOutlined,
+  Audit: AuditOutlined,
+  KeySquare: KeyOutlined,
+  Appstore: AppstoreOutlined,
+  Cube: CodeSandboxOutlined,
+  Dashboard: DashboardOutlined,
 }
 
 function renderIcon(name: string | null | undefined, isDir: boolean) {
@@ -179,7 +203,7 @@ function WorkbenchShell() {
     setTabs(next)
     if (location.pathname === key) {
       const target = next[idx] || next[idx - 1]
-      navigate(target ? target.key : '/customer/apply')
+      navigate(target ? target.key : '/ign/version')
     }
   }
 

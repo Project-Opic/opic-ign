@@ -1,5 +1,4 @@
 import { http, type PageResult } from './request'
-import type { Customer } from './customer'
 
 export interface FlowGraphNode {
   id: string
@@ -92,22 +91,45 @@ export interface FlowHistoryItem {
   created_at: string
 }
 
-/* ============ 工作台条目(任务行合并客户信息) ============ */
+/* ============ 工作台条目(任务行合并强制注销申请信息;FLOW-PROC-APP-01) ============ */
 
 export interface TodoItem extends FlowTask {
-  customer_name?: string
-  customer_no?: string
-  applicant_name?: string
+  apply_no?: string
+  reason?: string
+  apply_status?: string
+  executor_no?: string
+  executor_name?: string
+  executor_status?: string
+  creator_name?: string
+  impact_snapshot?: Record<string, unknown>
   started_at?: string
 }
 
 export interface DoneItem extends FlowTask {
-  customer_name?: string
-  customer_no?: string
+  apply_no?: string
+  reason?: string
+  apply_status?: string
+  executor_no?: string
+  executor_name?: string
+  creator_name?: string
+  started_at?: string
 }
 
-export interface RequestedItem extends Customer {
-  flow_status?: string
+/** 我的申请 = 本中心我提交的执行机强制注销申请(flow_instance 维度) */
+export interface RequestedItem {
+  instance_id: number
+  apply_no: string
+  reason?: string | null
+  apply_status?: string | null
+  flow_status: string
+  approve_comment?: string | null
+  approved_name?: string | null
+  approved_at?: string | null
+  removal_report?: string | null
+  executor_no?: string | null
+  executor_name?: string | null
+  executor_status?: string | null
+  started_at?: string
 }
 
 /* ============ 流程定义 ============ */

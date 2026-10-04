@@ -16,10 +16,10 @@ export interface Rule {
 
 export const metaApi = {
   dictionaries() {
-    return http.get<{ CUSTOMER_TYPE: DictItem[]; CUSTOMER_LEVEL: DictItem[] }>('/api/meta/dictionaries')
+    return http.get<{ IGN_EXECUTOR_STATUS: DictItem[]; IGN_TASK_STATUS: DictItem[] }>('/api/meta/dictionaries')
   },
-  customerStatus() {
-    return http.get<string[]>('/api/meta/customer-status')
+  ignStatus() {
+    return http.get<string[]>('/api/meta/ign-status')
   },
   rules() {
     return http.get<Rule[]>('/api/meta/rules')

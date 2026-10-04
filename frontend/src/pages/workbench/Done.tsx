@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined } from '@ant-design/icons'
 import { workbenchApi, type DoneItem } from '../../api/flow'
 import TableToolbar from '../../admin/components/TableToolbar'
+import { IgnApplyStatusPill, IgnExecutorStatusPill } from '../../admin/components/StatusPill'
 
 const actionColor: Record<string, string> = {
   APPROVE: 'green',
@@ -46,14 +47,29 @@ export default function Done() {
 
   const columns: ColumnsType<DoneItem> = [
     {
-      title: '客户编号',
-      dataIndex: 'customer_no',
-      key: 'customer_no',
-      width: 150,
+      title: '申请编号',
+      dataIndex: 'apply_no',
+      key: 'apply_no',
+      width: 165,
       render: (v: string | undefined, r) => v || r.business_key || '-',
     },
-    { title: '客户名称', dataIndex: 'customer_name', key: 'customer_name', render: (v) => v || '-' },
-    { title: '审批节点', dataIndex: 'activity_name', key: 'activity_name', width: 160 },
+    { title: '执行机', dataIndex: 'executor_no', key: 'executor_no', width: 165, render: (v) => v || '-' },
+    {
+      title: '执行机状态',
+      dataIndex: 'executor_status',
+      key: 'executor_status',
+      width: 110,
+      render: (v: string | undefined) => (v ? <IgnExecutorStatusPill status={v} /> : '-'),
+    },
+    { title: '强制原因', dataIndex: 'reason', key: 'reason', ellipsis: true },
+    {
+      title: '申请单状态',
+      dataIndex: 'apply_status',
+      key: 'apply_status',
+      width: 150,
+      render: (v: string | undefined) => (v ? <IgnApplyStatusPill status={v} /> : '-'),
+    },
+    { title: '审批节点', dataIndex: 'activity_name', key: 'activity_name', width: 180 },
     {
       title: '动作',
       dataIndex: 'action',
@@ -61,6 +77,7 @@ export default function Done() {
       width: 100,
       render: (v: string | null) => (v ? <Tag color={actionColor[v] || 'default'}>{actionLabel[v] || v}</Tag> : '-'),
     },
+    { title: '提交人', dataIndex: 'creator_name', key: 'creator_name', width: 110, render: (v) => v || '-' },
     { title: '审批意见', dataIndex: 'comment', key: 'comment', render: (v) => v || '-' },
     { title: '办理时间', dataIndex: 'done_at', key: 'done_at', width: 180, render: (v) => v || '-' },
   ]
@@ -81,6 +98,7 @@ export default function Done() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        scroll={{ x: 1200 }}
         pagination={{
           current: page,
           pageSize: size,

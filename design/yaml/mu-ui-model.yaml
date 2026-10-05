@@ -1,0 +1,767 @@
+model_type: UI
+version: '1.0'
+domain: 交付执行域
+application:
+  name: OPIC-交付执行域
+  menus:
+  - menuId: menu-l1-01
+    name: 交付管理
+    children:
+    - menuId: menu-ign-version
+      name: 版本目录
+      screenRef: frmIgnVersion
+    - menuId: menu-ign-image
+      name: 发行包与镜像
+      screenRef: frmIgnImage
+    - menuId: menu-ign-executor
+      name: 执行机
+      screenRef: frmIgnExecutor
+    - menuId: menu-ign-tls
+      name: 通道安全
+      screenRef: frmIgnTls
+    - menuId: menu-ign-task
+      name: 任务桥接
+      screenRef: frmIgnTask
+    - menuId: menu-ign-log
+      name: 日志与对账
+      screenRef: frmIgnLog
+  - menuId: menu-l1-02
+    name: 运行观测
+    children:
+    - menuId: menu-ign-ops
+      name: 运行观测
+      screenRef: frmIgnOps
+screens:
+- screenId: frmIgnVersion
+  name: 版本列表维护
+  screenType: LIST_MAINTENANCE
+  layout: ''
+  elements:
+  - id: el01
+    type: TEXTBOX
+    label: 编排引擎版本
+    io: I
+    required: false
+    dataBinding: DeliveryVersion.orchestratorVersion
+  - id: el02
+    type: SELECT
+    label: 版本状态
+    io: I
+    required: false
+    dataBinding: 同左
+    role: QUERY
+  - id: el03
+    type: BUTTON
+    label: 版本登记（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el04
+    type: TEXT
+    label: 版本编号
+    io: O
+    required: false
+    dataBinding: DeliveryVersion
+  - id: el05
+    type: TEXT
+    label: 版本名
+    io: O
+    required: false
+    dataBinding: DeliveryVersion
+  - id: el06
+    type: TEXT
+    label: 组件版本组（契约，上架后冻结）
+    io: O
+    required: false
+    dataBinding: 组件版本组六项
+  - id: el07
+    type: TEXT
+    label: 预推汇总
+    io: O
+    required: false
+    dataBinding: ImagePrepushItem 聚合
+  - id: el08
+    type: BUTTON
+    label: 断点续推（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  actions:
+  - actionId: act-FUNC-01
+    name: 版本登记
+    actionType: OTHER
+    behaviorRef: FUNC-01
+    permissionRef:
+    - PERM-FUNC-01
+  - actionId: act-FUNC-02
+    name: 版本登记信息修改
+    actionType: OTHER
+    behaviorRef: FUNC-02
+    permissionRef:
+    - PERM-FUNC-02
+  - actionId: act-FUNC-03
+    name: 触发发行包下载
+    actionType: OTHER
+    behaviorRef: FUNC-03
+    permissionRef:
+    - PERM-FUNC-03
+  - actionId: act-FUNC-04
+    name: 版本归档
+    actionType: OTHER
+    behaviorRef: FUNC-04
+    permissionRef:
+    - PERM-FUNC-04
+  - actionId: act-FUNC-05
+    name: 版本软删除
+    actionType: OTHER
+    behaviorRef: FUNC-05
+    permissionRef:
+    - PERM-FUNC-05
+  - actionId: act-FUNC-06
+    name: 版本列表查询
+    actionType: QUERY
+    behaviorRef: FUNC-06
+    permissionRef:
+    - PERM-FUNC-06
+  - actionId: act-FUNC-07
+    name: 版本详情查询（含镜像清单与预推状态）
+    actionType: QUERY
+    behaviorRef: FUNC-07
+    permissionRef:
+    - PERM-FUNC-07
+- screenId: frmIgnImage
+  name: 发行包与预推台
+  screenType: LIST_MAINTENANCE
+  layout: ''
+  elements:
+  - id: el01
+    type: TEXTBOX
+    label: 版本
+    io: I
+    required: false
+    dataBinding: DeliveryVersion
+  - id: el02
+    type: SELECT
+    label: 预推状态
+    io: I
+    required: false
+    dataBinding: ImagePrepushItem.prepushStatus
+    role: QUERY
+  - id: el03
+    type: BUTTON
+    label: 触发下载（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el04
+    type: BUTTON
+    label: 触发预推（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el05
+    type: TEXT
+    label: 镜像坐标
+    io: O
+    required: false
+    dataBinding: ImagePrepushItem
+  - id: el06
+    type: TEXT
+    label: 摘要
+    io: O
+    required: false
+    dataBinding: ImagePrepushItem
+  - id: el07
+    type: TEXT
+    label: 失败原因
+    io: O
+    required: false
+    dataBinding: ImagePrepushItem
+  - id: el08
+    type: TEXT
+    label: 最近预推时间
+    io: O
+    required: false
+    dataBinding: ImagePrepushItem
+  - id: el09
+    type: BUTTON
+    label: 镜像清单覆写（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  actions:
+  - actionId: act-FUNC-09
+    name: 触发镜像预推
+    actionType: OTHER
+    behaviorRef: FUNC-09
+    permissionRef:
+    - PERM-FUNC-09
+  - actionId: act-FUNC-10
+    name: 镜像清单人工覆写
+    actionType: OTHER
+    behaviorRef: FUNC-10
+    permissionRef:
+    - PERM-FUNC-10
+  - actionId: act-FUNC-11
+    name: 预推失败重试（断点续推）
+    actionType: OTHER
+    behaviorRef: FUNC-11
+    permissionRef:
+    - PERM-FUNC-11
+  - actionId: act-FUNC-12
+    name: 预推明细查询
+    actionType: QUERY
+    behaviorRef: FUNC-12
+    permissionRef:
+    - PERM-FUNC-12
+- screenId: frmIgnExecutor
+  name: 执行机操作台
+  screenType: SINGLE_FORM
+  layout: ''
+  elements:
+  - id: el01
+    type: SELECT
+    label: 治理状态
+    io: I
+    required: false
+    dataBinding: Executor.status
+    role: QUERY
+  - id: el02
+    type: SELECT
+    label: 类型
+    io: I
+    required: false
+    dataBinding: 同左
+    role: QUERY
+  - id: el03
+    type: BUTTON
+    label: 注册远程执行机（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el04
+    type: TEXT
+    label: 执行机编号
+    io: O
+    required: false
+    dataBinding: Executor
+  - id: el05
+    type: TEXT
+    label: 名称
+    io: O
+    required: false
+    dataBinding: Executor
+  - id: el06
+    type: TEXT
+    label: 类型 ｜ 资产引用
+    io: O
+    required: false
+    dataBinding: Executor.assetRef
+  - id: el07
+    type: TEXT
+    label: 健康（含观测时间）
+    io: O
+    required: false
+    dataBinding: lastHeartbeatAt 派生
+  - id: el08
+    type: TEXT
+    label: 并发
+    io: O
+    required: false
+    dataBinding: currentTasksCount
+  - id: el09
+    type: BUTTON
+    label: 注销（空闲）（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el10
+    type: BUTTON
+    label: 强制注销申请（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el11
+    type: TEXT
+    label: 运行中任务清单
+    io: O
+    required: false
+    dataBinding: ExecTask
+  - id: el12
+    type: TEXTBOX
+    label: 强制原因
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el13
+    type: BUTTON
+    label: 重新生成令牌（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  actions:
+  - actionId: act-FUNC-13
+    name: 注册远程执行机
+    actionType: OTHER
+    behaviorRef: FUNC-13
+    permissionRef:
+    - PERM-FUNC-13
+  - actionId: act-FUNC-14
+    name: 重新生成引导令牌（含锁定解锁）
+    actionType: OTHER
+    behaviorRef: FUNC-14
+    permissionRef:
+    - PERM-FUNC-14
+  - actionId: act-FUNC-15
+    name: 执行机注销（空闲）
+    actionType: OTHER
+    behaviorRef: FUNC-15
+    permissionRef:
+    - PERM-FUNC-15
+  - actionId: act-FUNC-16
+    name: 执行机能力标签调整
+    actionType: OTHER
+    behaviorRef: FUNC-16
+    permissionRef:
+    - PERM-FUNC-16
+  - actionId: act-FUNC-17
+    name: 执行机列表查询（含健康视图）
+    actionType: QUERY
+    behaviorRef: FUNC-17
+    permissionRef:
+    - PERM-FUNC-17
+  - actionId: act-FUNC-18
+    name: 执行机详情查询
+    actionType: QUERY
+    behaviorRef: FUNC-18
+    permissionRef:
+    - PERM-FUNC-18
+  - actionId: act-FUNC-31
+    name: 强制注销 · 提交申请
+    actionType: DRAFT
+    behaviorRef: FUNC-31
+    permissionRef:
+    - PERM-FUNC-31
+  - actionId: act-FUNC-32
+    name: 强制注销 · 通过
+    actionType: OTHER
+    behaviorRef: FUNC-32
+    permissionRef:
+    - PERM-FUNC-32
+  - actionId: act-FUNC-33
+    name: 强制注销 · 驳回
+    actionType: OTHER
+    behaviorRef: FUNC-33
+    permissionRef:
+    - PERM-FUNC-33
+- screenId: frmIgnTls
+  name: 通道安全台
+  screenType: LIST_MAINTENANCE
+  layout: ''
+  elements:
+  - id: el01
+    type: TEXTBOX
+    label: 执行机
+    io: I
+    required: false
+    dataBinding: ExecutorTlsBinding.executorRef
+  - id: el02
+    type: SELECT
+    label: 证书用途
+    io: I
+    required: false
+    dataBinding: 同左
+    role: QUERY
+  - id: el03
+    type: BUTTON
+    label: 临期视图（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el04
+    type: TEXT
+    label: 绑定编号
+    io: O
+    required: false
+    dataBinding: ExecutorTlsBinding
+  - id: el05
+    type: TEXT
+    label: 生效止
+    io: O
+    required: false
+    dataBinding: ExecutorTlsBinding
+  - id: el06
+    type: TEXT
+    label: 状态
+    io: O
+    required: false
+    dataBinding: ExecutorTlsBinding
+  - id: el07
+    type: TEXT
+    label: 凭据标识（跳转证书域）
+    io: O
+    required: false
+    dataBinding: ExecutorTlsBinding.certRef
+  - id: el08
+    type: TEXT
+    label: 剩余天数（即时计算）
+    io: O
+    required: false
+    dataBinding: notAfter 派生
+  - id: el09
+    type: TEXT
+    label: TLS 已禁用（红标）
+    io: O
+    required: false
+    dataBinding: Executor 降级声明
+  - id: el10
+    type: BUTTON
+    label: 手动触发续期（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  actions:
+  - actionId: act-FUNC-20
+    name: 手动触发证书续期
+    actionType: OTHER
+    behaviorRef: FUNC-20
+    permissionRef:
+    - PERM-FUNC-20
+  - actionId: act-FUNC-21
+    name: TLS 显式降级声明（实验环境）
+    actionType: OTHER
+    behaviorRef: FUNC-21
+    permissionRef:
+    - PERM-FUNC-21
+  - actionId: act-FUNC-22
+    name: 证书绑定清单查询（含临期视图）
+    actionType: QUERY
+    behaviorRef: FUNC-22
+    permissionRef:
+    - PERM-FUNC-22
+- screenId: frmIgnTask
+  name: 任务提交与台账
+  screenType: MASTER_DETAIL_FORM
+  layout: ''
+  elements:
+  - id: el01
+    type: SELECT
+    label: 执行机
+    io: I
+    required: true
+    dataBinding: Executor 筛选
+    role: QUERY
+  - id: el02
+    type: SELECT
+    label: 执行动作
+    io: I
+    required: true
+    dataBinding: ''
+    role: QUERY
+  - id: el03
+    type: TEXT
+    label: 动作参数
+    io: O
+    required: true
+    dataBinding: ''
+  - id: el04
+    type: TEXT
+    label: 关联集群
+    io: O
+    required: true
+    dataBinding: ''
+  - id: el05
+    type: TEXT
+    label: 超时秒数
+    io: O
+    required: true
+    dataBinding: ''
+  - id: el06
+    type: BUTTON
+    label: 提交（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el07
+    type: BUTTON
+    label: 取消执行任务（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  - id: el08
+    type: TEXT
+    label: 环境变量
+    io: O
+    required: false
+    dataBinding: ExecTask.env
+  - id: el09
+    type: TEXT
+    label: 状态（含来源）
+    io: O
+    required: false
+    dataBinding: ExecTask
+  actions:
+  - actionId: act-FUNC-23
+    name: 提交执行任务
+    actionType: DRAFT
+    behaviorRef: FUNC-23
+    permissionRef:
+    - PERM-FUNC-23
+  - actionId: act-FUNC-24
+    name: 取消执行任务
+    actionType: OTHER
+    behaviorRef: FUNC-24
+    permissionRef:
+    - PERM-FUNC-24
+- screenId: frmIgnLog
+  name: 日志与对账台
+  screenType: QUERY_LIST
+  layout: ''
+  elements:
+  - id: el01
+    type: TEXTBOX
+    label: 任务
+    io: I
+    required: false
+    dataBinding: ExecTask.taskNo
+  - id: el02
+    type: TEXT
+    label: 时间
+    io: O
+    required: false
+    dataBinding: 日志通道
+  - id: el03
+    type: TEXT
+    label: 流向
+    io: O
+    required: false
+    dataBinding: 日志通道
+  - id: el04
+    type: TEXT
+    label: 日志行
+    io: O
+    required: false
+    dataBinding: 日志通道
+  - id: el05
+    type: TAB
+    label: 对账与纠偏（页签）
+    io: I
+    required: false
+    dataBinding: 纠偏记录
+  - id: el06
+    type: TEXT
+    label: 状态来源标注
+    io: O
+    required: false
+    dataBinding: ExecTask
+  actions:
+  - actionId: act-FUNC-25
+    name: 任务台账查询
+    actionType: QUERY
+    behaviorRef: FUNC-25
+    permissionRef:
+    - PERM-FUNC-25
+  - actionId: act-FUNC-26
+    name: 任务详情查询
+    actionType: QUERY
+    behaviorRef: FUNC-26
+    permissionRef:
+    - PERM-FUNC-26
+  - actionId: act-FUNC-27
+    name: 任务日志查询（中继回流视图）
+    actionType: QUERY
+    behaviorRef: FUNC-27
+    permissionRef:
+    - PERM-FUNC-27
+  - actionId: act-FUNC-28
+    name: 对账与纠偏台账查询
+    actionType: QUERY
+    behaviorRef: FUNC-28
+    permissionRef:
+    - PERM-FUNC-28
+- screenId: frmIgnOps
+  name: 统计与参数
+  screenType: QUERY_LIST
+  layout: ''
+  elements:
+  - id: el01
+    type: TEXT
+    label: 版本数
+    io: O
+    required: false
+    dataBinding: DeliveryVersion 聚合
+  - id: el02
+    type: TEXT
+    label: 可用版本
+    io: O
+    required: false
+    dataBinding: DeliveryVersion 聚合
+  - id: el03
+    type: TEXT
+    label: 执行机就绪
+    io: O
+    required: false
+    dataBinding: Executor 聚合
+  - id: el04
+    type: TEXT
+    label: 不可达
+    io: O
+    required: false
+    dataBinding: Executor 聚合
+  - id: el05
+    type: TEXT
+    label: 任务 7 日成功
+    io: O
+    required: false
+    dataBinding: ExecTask 聚合
+  - id: el06
+    type: TEXT
+    label: 纠偏次数
+    io: O
+    required: false
+    dataBinding: 纠偏记录
+  - id: el07
+    type: TEXT
+    label: 任务默认超时（秒）
+    io: O
+    required: false
+    dataBinding: O-SYS 配置
+  - id: el08
+    type: TEXT
+    label: 心跳超时阈值（秒）
+    io: O
+    required: false
+    dataBinding: 同左
+  - id: el09
+    type: TEXT
+    label: 引导令牌有效期（秒）
+    io: O
+    required: false
+    dataBinding: 同左
+  - id: el10
+    type: BUTTON
+    label: 保存运行参数（按钮）
+    io: I
+    required: false
+    dataBinding: ''
+  actions:
+  - actionId: act-FUNC-29
+    name: 统计总览查询
+    actionType: QUERY
+    behaviorRef: FUNC-29
+    permissionRef:
+    - PERM-FUNC-29
+  - actionId: act-FUNC-30
+    name: 运行参数维护
+    actionType: OTHER
+    behaviorRef: FUNC-30
+    permissionRef:
+    - PERM-FUNC-30
+- screenId: frmPublicEntry01
+  name: 跨中心版本视图
+  screenType: LIST_MAINTENANCE
+  layout: ''
+  elements:
+  - id: oc1
+    type: TEXT
+    label: 版本标识
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc2
+    type: TEXT
+    label: 显示名
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc3
+    type: TEXT
+    label: 编排引擎版本
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc4
+    type: TEXT
+    label: 运行时版本
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc5
+    type: TEXT
+    label: CNI
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc6
+    type: TEXT
+    label: 默认仓库项目
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc7
+    type: TEXT
+    label: 预推状态
+    io: O
+    required: false
+    dataBinding: ''
+  actions:
+  - actionId: act-FUNC-08
+    name: 跨中心版本查询（集群创建视图）
+    actionType: QUERY
+    behaviorRef: FUNC-08
+    permissionRef:
+    - PERM-FUNC-08
+- screenId: frmPublicEntry02
+  name: 跨中心执行机视图
+  screenType: LIST_MAINTENANCE
+  layout: ''
+  elements:
+  - id: oc1
+    type: TEXT
+    label: 执行机标识
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc2
+    type: TEXT
+    label: 名称
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc3
+    type: TEXT
+    label: 类型
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc4
+    type: TEXT
+    label: 地址
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc5
+    type: TEXT
+    label: 当前任务数 / 上限
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc6
+    type: TEXT
+    label: 负载
+    io: O
+    required: false
+    dataBinding: ''
+  - id: oc7
+    type: TEXT
+    label: 能力标签
+    io: O
+    required: false
+    dataBinding: ''
+  actions:
+  - actionId: act-FUNC-19
+    name: 跨中心执行机查询（集群创建视图）
+    actionType: QUERY
+    behaviorRef: FUNC-19
+    permissionRef:
+    - PERM-FUNC-19

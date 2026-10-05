@@ -1,0 +1,591 @@
+model_type: FLOW
+version: '1.0'
+domain: 交付执行域
+flows:
+- id: FLOW-PROC-01
+  name: 版本上架
+  flowType: COLLABORATION
+  description: 把一套交付工具版本从编目推到「可被集群选择」
+  businessObjectRefs: []
+  roleRefs:
+  - IGN-ROLE-01
+  trigger:
+    triggerType: MANUAL
+  preconditions: []
+  postconditions: []
+  startActivity: A01
+  endActivities:
+  - A16
+  activities:
+  - activityId: A01
+    name: 版本登记：组件版本组 + 发行包地址
+    activityType: START
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 状态置草稿
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A03
+  - activityId: A03
+    name: 触发下载
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A04
+  - activityId: A04
+    name: 下载发行包
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A05
+  - activityId: A05
+    name: SHA256 强校验
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A06
+  - activityId: A06
+    name: 删除已下载文件：置失败可重试
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A07
+  - activityId: A07
+    name: 解压缓存：登记路径：置就绪
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A08
+  - activityId: A08
+    name: 触发预推
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A09
+  - activityId: A09
+    name: 前置阻断：说明该版本无法预推
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A10
+  - activityId: A10
+    name: 逐镜像复制：并发受控
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A11
+  - activityId: A11
+    name: 代理执行预推动作
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A12
+  - activityId: A12
+    name: 取令牌 + 复制镜像
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A13
+  - activityId: A13
+    name: 逐镜像落预推明细
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A14
+  - activityId: A14
+    name: 全部成功
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A15
+  - activityId: A15
+    name: 置已预推：进入可选池
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A16
+  - activityId: A16
+    name: 置部分预推：断点续推只补失败
+    activityType: END
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities: []
+- id: FLOW-PROC-02
+  name: 执行机注册与引导
+  flowType: COLLABORATION
+  description: 把一台远程机器变成可分派任务的执行机
+  businessObjectRefs: []
+  roleRefs:
+  - IGN-ROLE-01
+  trigger:
+    triggerType: MANUAL
+  preconditions: []
+  postconditions: []
+  startActivity: A01
+  endActivities:
+  - A14
+  activities:
+  - activityId: A01
+    name: 注册远程执行机：引用资产
+    activityType: START
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 生成引导凭据：明文一次性交付
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A03
+  - activityId: A03
+    name: 状态置待引导
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A04
+  - activityId: A04
+    name: 代理携带令牌回连 bootstrap
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A05
+  - activityId: A05
+    name: 令牌校验
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A06
+  - activityId: A06
+    name: 失败计数 +1：达阈值置锁定（R-04）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A07
+  - activityId: A07
+    name: 拒绝：提示重新生成令牌
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A08
+  - activityId: A08
+    name: 调证书中心签发服务端证书
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A09
+  - activityId: A09
+    name: 签发 server 证书
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A10
+  - activityId: A10
+    name: 签发客户端证书
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A11
+  - activityId: A11
+    name: 双证书齐备
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A12
+  - activityId: A12
+    name: 吊销已签发侧：回待引导（R-03 半引导不允许存活）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A13
+  - activityId: A13
+    name: 证书 PEM 一次性下发：清除令牌（凭据置已消耗）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A14
+  - activityId: A14
+    name: 双绑定 ACTIVE：执行机置就绪（R-03）
+    activityType: END
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities: []
+- id: FLOW-PROC-03
+  name: 任务分发与结果回流
+  flowType: COLLABORATION
+  description: 把一个白名单动作安全送到执行机并拿回完整结果
+  businessObjectRefs: []
+  roleRefs:
+  - IGN-ROLE-01
+  trigger:
+    triggerType: MANUAL
+  preconditions: []
+  postconditions: []
+  startActivity: A01
+  endActivities:
+  - A15
+  activities:
+  - activityId: A01
+    name: 提交任务：白名单动作 + 请求令牌
+    activityType: START
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 治理校验 R-12
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A03
+  - activityId: A03
+    name: 治理拒绝：403 语义 + 拒绝审计
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A04
+  - activityId: A04
+    name: 执行机容量原子校验 R-05
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A05
+  - activityId: A05
+    name: 容量拒绝：不进入队列
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A06
+  - activityId: A06
+    name: 登记任务 + 计数递增
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A07
+  - activityId: A07
+    name: mTLS 转发到执行机
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A08
+  - activityId: A08
+    name: 代理 fork 子进程：独立 argv 无 shell
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A09
+  - activityId: A09
+    name: 登记远端任务号
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A10
+  - activityId: A10
+    name: 日志中继订阅回流
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A11
+  - activityId: A11
+    name: 任务结束
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A12
+  - activityId: A12
+    name: 计数递减 + 任务终态 + 退出码留痕
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A13
+  - activityId: A13
+    name: 显式置败：原因分列（R-09）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A14
+  - activityId: A14
+    name: 以执行机为准回填：留痕（R-09）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A15
+  - activityId: A15
+    name: 发布任务事件：集群域据此判定交付结果
+    activityType: END
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities: []
+- id: FLOW-PROC-04
+  name: 通道证书续期
+  flowType: COLLABORATION
+  description: 执行机通道证书在临期或轮换时无感续期
+  businessObjectRefs: []
+  roleRefs:
+  - IGN-ROLE-01
+  trigger:
+    triggerType: MANUAL
+  preconditions: []
+  postconditions: []
+  startActivity: A01
+  endActivities:
+  - A09
+  activities:
+  - activityId: A01
+    name: 临期扫描或手动触发或轮换事件
+    activityType: START
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 请求证书中心重签
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A03
+  - activityId: A03
+    name: 签发新证书
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A04
+  - activityId: A04
+    name: 推送执行机热加载
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A05
+  - activityId: A05
+    name: 代理热加载 TLS 监听器
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A06
+  - activityId: A06
+    name: 推送成功
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A07
+  - activityId: A07
+    name: 更新绑定事实快照：续期计数 +1
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A08
+  - activityId: A08
+    name: 回滚保留旧证书：执行机置待续期并告警
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A09
+  - activityId: A09
+    name: 留痕
+    activityType: END
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities: []
+- id: FLOW-PROC-05
+  name: 执行机注销与拆除
+  flowType: COLLABORATION
+  description: 把一台执行机退出可用池并清理其通道身份
+  businessObjectRefs: []
+  roleRefs:
+  - IGN-ROLE-01
+  trigger:
+    triggerType: MANUAL
+  preconditions: []
+  postconditions: []
+  startActivity: A01
+  endActivities:
+  - A10
+  activities:
+  - activityId: A01
+    name: 注销入口
+    activityType: START
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 直接进入拆除链
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A03
+  - activityId: A03
+    name: 强制注销申请：影响面展示（运行中任务清单）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A04
+  - activityId: A04
+    name: 审批通过（PROC-APP-01）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A05
+  - activityId: A05
+    name: 取消全部运行中任务：等待至多 30 秒
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A06
+  - activityId: A06
+    name: 代理终止子进程
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A07
+  - activityId: A07
+    name: 吊销双证书
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A08
+  - activityId: A08
+    name: O-CRT 吊销
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A09
+  - activityId: A09
+    name: 凭据置已吊销：状态置已注销（R-07 次序固定）
+    activityType: TASK
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities:
+    - A10
+  - activityId: A10
+    name: 注销报告：取消结果与残留留痕
+    activityType: END
+    roleRef: IGN-ROLE-01
+    behaviorRef: null
+    nextActivities: []
+- id: FLOW-PROC-APP-01
+  name: 执行机强制注销审批（单级）
+  flowType: COLLABORATION
+  description: ''
+  businessObjectRefs: []
+  roleRefs: []
+  trigger:
+    triggerType: MANUAL
+  preconditions: []
+  postconditions: []
+  startActivity: A01
+  endActivities:
+  - A08
+  activities:
+  - activityId: A01
+    name: 提交强制注销申请 FUNC-31
+    activityType: START
+    roleRef: null
+    behaviorRef: FUNC-31
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 运行中任务
+    activityType: TASK
+    roleRef: null
+    behaviorRef: null
+    nextActivities:
+    - A03
+  - activityId: A03
+    name: 不应到达：空闲注销直达
+    activityType: TASK
+    roleRef: null
+    behaviorRef: null
+    nextActivities:
+    - A04
+  - activityId: A04
+    name: 影响面强制展示：任务清单 + 所属集群
+    activityType: TASK
+    roleRef: null
+    behaviorRef: null
+    nextActivities:
+    - A05
+  - activityId: A05
+    name: 待审批
+    activityType: TASK
+    roleRef: null
+    behaviorRef: null
+    nextActivities:
+    - A06
+  - activityId: A06
+    name: 平台运维管理员审批
+    activityType: TASK
+    roleRef: null
+    behaviorRef: null
+    nextActivities:
+    - A07
+  - activityId: A07
+    name: 进入 PROC-05 拆除链
+    activityType: TASK
+    roleRef: null
+    behaviorRef: null
+    nextActivities:
+    - A08
+  - activityId: A08
+    name: 审批关闭：状态不变，意见留痕
+    activityType: END
+    roleRef: null
+    behaviorRef: null
+    nextActivities: []

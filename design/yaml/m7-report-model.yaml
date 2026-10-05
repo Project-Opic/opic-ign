@@ -1,0 +1,782 @@
+model_type: REPORT
+version: '1.0'
+domain: 交付执行域
+query_reports:
+- id: REP-01
+  name: 版本列表
+  alias: rep01
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-06
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 列表
+  joins: []
+  parameters:
+  - name: p1
+    label: 状态 / 编排引擎版本 / CNI / 关键字
+    dataType: String
+    required: false
+    allowedOperators:
+    - LIKE
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: 状态 / 编排引擎版本 / CNI / 关键字
+    operator: LIKE
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 版本编号
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 版本名
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 组件版本组（六项）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 状态
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 预推汇总
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 归档时间
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-02
+  name: 版本详情
+  alias: rep02
+  objectType: STATISTICS
+  description: ''
+  behaviorRef: FUNC-07
+  sourceObjects:
+  - objectRef: AGG-IGN-02
+    alias: imageprepushitem
+    primary: true
+  joins: []
+  parameters:
+  - name: p1
+    label: 版本状态
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+    sourceNote: 9.x 屏幕 frmIgnVersion 工具栏筛选
+  conditions:
+  - conditionId: C01
+    leftExpression: 版本状态
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 登记信息 ｜ 缓存状态（路径 + 摘要核对结论）｜ 镜像清单与预推汇总 ｜ 引用集群（跳集群域）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-03
+  name: 跨中心版本视图
+  alias: rep03
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-08
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 精简列表
+  joins: []
+  parameters: []
+  conditions: []
+  resultColumns:
+  - name: c1
+    label: 版本标识
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 显示名
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 编排引擎版本
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 运行时版本
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: CNI
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 默认仓库项目
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c7
+    label: 预推状态
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件，且无绑定屏可回溯 → 参数待建模阶段补齐
+- id: REP-04
+  name: 预推明细
+  alias: rep04
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-12
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 列表
+  joins: []
+  parameters:
+  - name: p1
+    label: 版本 / 预推状态
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: 版本 / 预推状态
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 镜像坐标
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 摘要
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 体积
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 预推状态
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 失败原因
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 最近预推时间
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-05
+  name: 执行机列表
+  alias: rep05
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-17
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 列表
+  joins: []
+  parameters:
+  - name: p1
+    label: 治理状态 / 类型 / 能力标签 / 健康视图
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: 治理状态 / 类型 / 能力标签 / 健康视图
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 执行机编号
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 名称
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 类型
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 资产引用（跳 O-AST）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 治理状态
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 健康结论（含观测时间）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c7
+    label: 当前任务数 / 上限
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-06
+  name: 执行机详情
+  alias: rep06
+  objectType: STATISTICS
+  description: ''
+  behaviorRef: FUNC-18
+  sourceObjects:
+  - objectRef: AGG-IGN-02
+    alias: imageprepushitem
+    primary: true
+  joins: []
+  parameters:
+  - name: p1
+    label: 治理状态
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+    sourceNote: 9.x 屏幕 frmIgnExecutor 工具栏筛选
+  - name: p2
+    label: 类型
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+    sourceNote: 9.x 屏幕 frmIgnExecutor 工具栏筛选
+  conditions:
+  - conditionId: C01
+    leftExpression: 治理状态
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  - conditionId: C02
+    leftExpression: 类型
+    operator: EQ
+    parameterRef: p2
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 登记信息 ｜ 引导信息（令牌只出布尔）｜ 证书绑定摘要（跳 O-CRT）｜ 并发额度 ｜ 最近心跳载荷
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-07
+  name: 跨中心执行机视图
+  alias: rep07
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-19
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 精简列表
+  joins: []
+  parameters: []
+  conditions: []
+  resultColumns:
+  - name: c1
+    label: 执行机标识
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 名称
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 类型
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 地址
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 当前任务数 / 上限
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 负载
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c7
+    label: 能力标签
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件，且无绑定屏可回溯 → 参数待建模阶段补齐
+- id: REP-08
+  name: 证书绑定清单
+  alias: rep08
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-22
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 列表
+  joins: []
+  parameters:
+  - name: p1
+    label: 执行机 / 用途 / 状态 / 临期
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: 执行机 / 用途 / 状态 / 临期
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 绑定编号
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 执行机
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 用途
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 凭据标识（跳 O-CRT）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 生效起止
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 剩余天数（即时计算）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c7
+    label: 续期次数
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c8
+    label: 状态
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-09
+  name: 任务台账
+  alias: rep09
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-25
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 列表
+  joins: []
+  parameters:
+  - name: p1
+    label: 执行机 / 动作 / 集群 / 状态 / 时间
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: 执行机 / 动作 / 集群 / 状态 / 时间
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 任务编号
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 动作
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 执行机
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 关联集群
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 状态 + 可信来源标注
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 退出码 / 失败原因
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c7
+    label: 起止时间
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-10
+  name: 任务详情
+  alias: rep10
+  objectType: STATISTICS
+  description: ''
+  behaviorRef: FUNC-26
+  sourceObjects:
+  - objectRef: AGG-IGN-02
+    alias: imageprepushitem
+    primary: true
+  joins: []
+  parameters: []
+  conditions: []
+  resultColumns:
+  - name: c1
+    label: 提交信息 ｜ 动作与参数（环境变量值脱敏）｜ 执行结果（退出码 + 来源标注）｜ 对账注记（是否被修正过）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件（紧凑家族只给「内容要点」结果列口径）；绑定屏 frmIgnLog 的 9.x 原型亦无工具栏筛选控件 → 参数待建模阶段补齐
+- id: REP-11
+  name: 任务日志视图
+  alias: rep11
+  objectType: STATISTICS
+  description: ''
+  behaviorRef: FUNC-27
+  sourceObjects:
+  - objectRef: AGG-IGN-02
+    alias: imageprepushitem
+    primary: true
+  joins: []
+  parameters: []
+  conditions: []
+  resultColumns: []
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件（紧凑家族只给「内容要点」结果列口径）；绑定屏 frmIgnLog 的 9.x 原型亦无工具栏筛选控件 → 参数待建模阶段补齐
+- id: REP-12
+  name: 对账与纠偏台账
+  alias: rep12
+  objectType: LIST_QUERY
+  description: ''
+  behaviorRef: FUNC-28
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 列表
+  joins: []
+  parameters:
+  - name: p1
+    label: 类型（计数纠偏 / 状态修正 / 任务丢失）/ 时间 / 对象
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: 类型/ 时间 / 对象
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 事件类型
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 对象
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 本地值 → 对端值
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 触发原因
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 留痕（谁 / 何时）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+- id: REP-13
+  name: 统计总览
+  alias: rep13
+  objectType: STATISTICS
+  description: ''
+  behaviorRef: FUNC-29
+  sourceObjects:
+  - objectRef: EXT-EXTERNAL
+    alias: external
+    primary: true
+    sourceNote: 固定统计报表
+  joins: []
+  parameters: []
+  conditions: []
+  resultColumns: []
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.0'
+  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件（紧凑家族只给「内容要点」结果列口径）；绑定屏 frmIgnOps 的 9.x 原型亦无工具栏筛选控件 → 参数待建模阶段补齐

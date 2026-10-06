@@ -17,6 +17,11 @@ import (
 	"gitcode.com/opic-ontology/opic-techbase/internal/middleware"
 )
 
+// perm 权限码 + 处理器(路由层挂载 ign:/system:/flow: 权限码)。
+func perm(code string, handler gin.HandlerFunc) []gin.HandlerFunc {
+	return []gin.HandlerFunc{middleware.RequirePermission(code), handler}
+}
+
 // SetupRoutes 挂载 /api 路由。
 func SetupRoutes(r *gin.Engine) {
 	api := r.Group("/api")
@@ -32,6 +37,17 @@ func SetupRoutes(r *gin.Engine) {
 		// 用户工作台 SSO（OPIC-SSO-01：Casdoor）
 		pub.GET("/auth/casdoor/login-url", auth.CasdoorLoginURL)
 		pub.GET("/auth/casdoor/callback", auth.CasdoorCallback)
+	}
+
+	// ---- 交付门面通道(/api/v1/ign/delivery,FUNC-34~36) ----
+	// 必须挂在 LoginRequired 组**之外**:Gin 会把 Authorization: Bearer 当会话 JWT 先消费掉,
+	// 上游服务令牌就永远解析不到。鉴权由 FacadeRequired(服务身份)+ RequirePermission
+	// (ign:FUNC-34~36,本域执行权限)两层构成 —— 需求 3.2.1「双重鉴权」的两条腿缺一不可。
+	facade := api.Group("/v1/ign/delivery", middleware.FacadeRequired())
+	{
+		facade.POST("/submit", perm("ign:FUNC-34", business.IgnFacadeSubmit)...)
+		facade.GET("/receipt/:ref", perm("ign:FUNC-35", business.IgnFacadeReceipt)...)
+		facade.POST("/cancel/:ref", perm("ign:FUNC-36", business.IgnFacadeCancel)...)
 	}
 
 	// ---- 登录路由组 ----
@@ -67,9 +83,6 @@ func SetupRoutes(r *gin.Engine) {
 
 		// ---- 点火中心业务路由(/api/v1/ign,权限码挂载) ----
 		ign := authed.Group("/v1/ign")
-		perm := func(code string, handler gin.HandlerFunc) []gin.HandlerFunc {
-			return []gin.HandlerFunc{middleware.RequirePermission(code), handler}
-		}
 		{
 			// 字典(登录即可)
 			ign.GET("/dictionaries", business.IgnDictionaries)
@@ -114,10 +127,14 @@ func SetupRoutes(r *gin.Engine) {
 			ign.POST("/task", perm("ign:FUNC-23", business.IgnTaskSubmit)...)
 			ign.GET("/task", perm("ign:FUNC-25", business.IgnTaskList)...)
 			ign.GET("/task/:taskNo", perm("ign:FUNC-26", business.IgnTaskGet)...)
+			ign.GET("/task/:taskNo/logs", perm("ign:FUNC-27", business.IgnTaskLogs)...)
 			ign.POST("/task/:taskNo/cancel", perm("ign:FUNC-24", business.IgnTaskCancel)...)
 
 			// 对账与纠偏台账(FUNC-28)
 			ign.GET("/reconcile", perm("ign:FUNC-28", business.IgnReconcileList)...)
+
+			// 门面受理台账(FUNC-37;REP-14,固定过滤来源任务标识非空)
+			ign.GET("/facade/task", perm("ign:FUNC-37", business.IgnFacadeTaskList)...)
 
 			// 运行观测(FUNC-29/30)
 			ign.GET("/stats", perm("ign:FUNC-29", business.IgnStats)...)

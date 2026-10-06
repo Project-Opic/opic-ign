@@ -7,7 +7,7 @@ OPIC 开放智能算力平台的 **点火中心**(MCC 交付执行域):交付版
 > 底座仅承载技术设施层,业务语义层归本中心 —— 中心业务独立演进,底座安全修复单向回流。
 >
 > 中心参数:`CENTER_CODE=ign`;opicdb `schema=ign`;NATS `stream=OPIC_IGN`、主题域 `opic.ign.>`;
-> Temporal `task_queue=ign`;API 前缀 `/api/v1/ign/*`;权限码 `ign:FUNC-01..33`(对齐 M5 PERM-FUNC-xx)。
+> Temporal `task_queue=ign`;API 前缀 `/api/v1/ign/*`;权限码 `ign:FUNC-01..37`(对齐 M5 PERM-FUNC-xx)。
 
 ## O-IGN 落地总览(ontology-driven-dev 阶段三)
 
@@ -17,40 +17,68 @@ OPIC 开放智能算力平台的 **点火中心**(MCC 交付执行域):交付版
 |---|---|
 | ① 七模型入库 | `models/`(M1 对象/M2 行为/M3 规则/M5 主体/M6 流程/M7 报表/MU 界面 + manifest.json);M6 `FLOW-PROC-APP-01` 补可执行 nodeGraph(含 edges,审批引擎按 approval_outcome 选路) |
 | ② 中心隔离 | `configs/config.yml`(center_code/schema/stream/subject/task_queue 显式 ign)、`.env.example` |
-| ③ 业务 DDL | `migrations/000004_business_ign.sql`(9 表:delivery_version / image_prepush_item / executor / bootstrap_credential / executor_tls_binding / exec_task / ign_force_remove / ign_reconcile_log / ign_platform_config + task_log);底座示例表 customer_application 自 000001 移除 |
+| ③ 业务 DDL | `migrations/000004_business_ign.sql`(9 表:delivery_version / image_prepush_item / executor / bootstrap_credential / executor_tls_binding / exec_task / ign_force_remove / ign_reconcile_log / ign_platform_config / ign_task_log)+ `migrations/000005_ign_delivery.sql`(v1.1:exec_task 增 step_code / source_task_no / source_step_index / verdict_source 四列,`request_token_digest` 改条件必填,幂等与排队索引,`task_log` 更名子实体表 `ign_task_log` 并增 `masked`);底座示例表 customer_application 自 000001 移除 |
 
 ### 十步实现(行为 → 服务层 → 页面)
 
 - **聚合根 6**:交付版本(VER)/镜像预推明细(IMG)/执行机(EXE)/引导凭据(BCR)/通道证书绑定(TLS)/执行任务(TSK);
   编号三段式 `{三位前缀}-YYYYMMDD-{4 位流水}`,服务层事务内 `pg_advisory_xact_lock` 防重号,唯一索引兜底。
-- **行为 33**(FUNC-01..33):版本登记/修改/下载/归档/软删/列表/详情/跨中心视图/预推/覆写/断点续推/预推明细;
+  v1.1 增子实体 `TaskLogLine`(表 `ign_task_log`,所属任务 + 行游标,不独立编号)。
+- **本机执行位内核**(`internal/service/ign_exec.go`,B-AUTO-11~15 + R-13/R-14/R-15 + INV-36~40):
+  执行位 = 点火中心后端容器自身(LOCAL 执行机那一行),kubeasz/ezctl 由发行包挂载提供,镜像不预装第三方交付工具;
+  「动作码 → argv」是**本域私有映射**(映射内容与命令语义不入模型、不出域,对上游只暴露动作码与结论);
+  fork + 逐行采集 stdout/stderr → 写 `ign_task_log`(游标单调 INV-38、写前不可逆脱敏 R-16/INV-40)、
+  取消走请求标记唤醒(B-AUTO-13)、进程退出由判定网关写终态 + 结论依据(EXIT_CODE / PLAY_RECAP),
+  平台重启后在途任务无法验真 ⇒ 显式 `LOST`(B-AUTO-14,第四终态,退出码位为空);
+  挂载缺失/不可执行 ⇒ 受理即刻拒绝并记 `TOOL_UNAVAILABLE`,绝不静默改走别的执行位(R-15);
+  白名单枚举 ≠ 可提交集合:15 个动作码分三层可达面 —— 交付动作层 11 项(人工 + 门面)、
+  `ezctl.new`(internal,只归 B-AUTO-15 工作目录前置)、`scripts.*` 平台项(platform,只归系统自动行为)。
+- **行为 37**(FUNC-01..37):版本登记/修改/下载/归档/软删/列表/详情/跨中心视图/预推/覆写/断点续推/预推明细;
   执行机注册/令牌重签/注销/能力调整/列表/详情/跨中心视图;TLS 续期/降级/清单;任务提交/取消/台账/详情/日志/对账;
-  统计总览/运行参数;强制注销提交/通过/驳回。
-- **规则中文提示**:INV-01..33 + R-01..R-12 关键路径全部落服务层(如 INV-04「组件版本组创建后不可修改——会被选进集群配置的契约字段」、
-  R-12「白名单外动作与拼接风险提交一律治理拒绝并审计」);校验时机对齐模型(保存即校验 vs 仅提交时强制校验,见 `/api/v1/ign/dictionaries` 的 checkpoint_note)。
+  统计总览/运行参数;强制注销提交/通过/驳回;v1.1 交付门面四件套:受理(FUNC-34)/回执与增量日志(FUNC-35)/撤销(FUNC-36)/受理台账查询(FUNC-37)。
+- **规则中文提示**:INV-01..40 + R-01..R-17 关键路径全部落服务层(如 INV-04「组件版本组创建后不可修改——会被选进集群配置的契约字段」、
+  R-12「白名单外动作与拼接风险提交一律治理拒绝并审计」、INV-36「安装族动作的步骤编码只认 01~07 参数域」、
+  INV-38「日志行游标在任务内单调,不独立编号」、R-16/INV-40「口令/令牌/私钥在写入前即不可逆脱敏」);
+  校验时机对齐模型(保存即校验 vs 仅提交时强制校验,见 `/api/v1/ign/dictionaries` 的 checkpoint_note)。
 - **审批流 1**:执行机强制注销(FLOW-PROC-APP-01,单级,IGN-ROLE-02 审批);提交(保存草稿/提交两种形态)→
   通过 = 取消运行任务 + 拆除链(R-07 次序固定:吊销双证书 → 凭据置已吊销 → 状态置已注销)→ 注销报告留痕;驳回 = 状态不变、意见留痕。
 - **页面 7**(MU frmIgn* 七屏):版本目录(/ign/version)/发行包与镜像(/ign/image)/执行机操作台(/ign/executor)/
-  通道安全台(/ign/tls)/任务桥接(/ign/task,主从布局)/日志与对账(/ign/log,页签布局)/运行观测(/ign/ops);另含审批中心三页适配。
-- **事件**:`opic.ign.version.* / executor.* / prepush.* / task.* / tls.* / ops.*`(旁路发布,失败仅记日志)。
-- **AI 对话框**:本体注入(system 提示词注入七模型摘要:聚合/表白名单/关键规则/编号口径)+
+  通道安全台(/ign/tls)/任务桥接(/ign/task,主从布局)/日志与对账(/ign/log,页签布局:任务日志·对账纠偏·门面受理台账)/运行观测(/ign/ops);
+  另含审批中心三页适配。v1.1 不新增屏幕:门面受理台账(FUNC-37)是 /ign/log 的第三页签,任务桥接页只增「步骤编码/结论依据/来源反查」列与只读日志子表。
+- **事件**:`opic.ign.version.* / executor.* / prepush.* / task.* / tls.* / ops.* / delivery.accepted`(旁路发布,失败仅记日志)。
+- **AI 对话框**:本体注入(system 提示词注入七模型摘要:聚合/表白名单/关键规则/编号口径,v1.1 追加 INV-34~40 + R-15/R-16/R-17 + 7.3 三层可达面)+
   只读 SQL 工具(`POST /api/assistant/query`:仅 SELECT/WITH、ign_* 白名单、强制 LIMIT 100、每次写审计;
   **白名单刻意不含 bootstrap_credential** —— INV-22 令牌三要素不得出现在任何查询响应)。
 - **代理侧端点**(IGN-ROLE-05 服务身份,登录即可 + 审计):`/api/v1/ign/agent/bootstrap`(引导回连,R-03/R-04)、
   `/api/v1/ign/agent/heartbeat`(心跳,R-06 计数纠偏)、`/api/v1/ign/task/:taskNo/complete`(任务回执,R-05/R-09)。
+- **交付门面端点**(FUNC-34~36,供 O-CLC 等上游中心单步下发;`Authorization: Bearer <delivery.facade_token>`):
+  `POST /api/v1/ign/delivery/submit`(受理)、`GET /api/v1/ign/delivery/receipt/:ref?since_seq=`(回执 + 增量日志)、
+  `POST /api/v1/ign/delivery/cancel/:ref`(撤销);台账 `GET /api/v1/ign/facade/task`(FUNC-37,人工只读)。
+  三处口径与主链路不同,均为设计定形:**flat JSON `{return_code, error_msg}` + 非 200**(Z1 治理拒绝 403 /
+  形态与规则 400 / 状态·容量·唯一 409 / 引用未命中 404 / 其余 500),不套 `returnInfo`;
+  请求体不含命令面/参数数组/工作目录(命令面由本域私有映射派生);幂等键 =「来源任务标识 + 来源步骤序号」(INV-35),
+  回执状态取值域 = `IGN_TASK_STATUS` 字典码(含 `COMPLETED`,由被调用方定义);
+  `facade_token` 未配置 ⇒ 门面三接口一律 401 关闭(不降级放行)。
+  两条鉴权腿挂在 `LoginRequired` **之外**(Gin 会把 `Authorization: Bearer` 当会话 JWT 先消费掉,上游服务令牌就永远解析不到):
+  `FacadeRequired`(服务身份)+ `RequirePermission(ign:FUNC-34~36)`(本域执行权限),缺一不可。
+- **字典取值域唯一来源**(`/api/v1/ign/dictionaries`):界面/门面的下拉与展示一律取注册表字典项,不在前端硬编码 ——
+  `IGN_ACTION`(15 动作码)/ `IGN_EXECUTOR_STATUS` / `IGN_TASK_STATUS`(含第四终态 `LOST`)/ `IGN_INSTALL_STEP`(01~07,INV-36)
+  / `IGN_VERDICT_SOURCE`(EXIT_CODE / PLAY_RECAP / AGENT_RECEIPT / TRACE_LOST,INV-37)+ `checkpoint_note`(校验时机口径)。
 - **跨域留痕口径**(不静默降级):asset_ref/cluster_ref/cert_ref 只存标识不直查他域表;
-  O-AST 资产存在性核对、O-CRT 证书签发/吊销、mTLS 任务转发三处跨中心通道阶段三未接入,均在响应/注销报告/对账台账如实留痕。
+  跨中心方向 v1.1 已落"被调用方"侧 —— O-CLC 全生命周期动作经交付门面单步下发(Bearer 令牌,`source_task_no` + `source_step_index` 反查留痕);
+  O-AST 资产存在性核对、O-CRT 证书签发/吊销两处跨中心通道仍未接入,REMOTE 代理对端本期留位不实现(Q-68),
+  均在响应/注销报告/对账台账如实留痕。
 
 ### 账号矩阵(M5 种子;local 模式口令均为 admin123)
 
 | 账号 | 角色 | 权限概要 |
 |---|---|---|
 | admin | 系统管理员 | 超管位(代码层注入 `*`) |
-| ignadmin | IGN-ROLE-01 交付管理员 | 版本/预推/执行机/证书/任务全部业务写 + FUNC-31 提交 |
-| opsadmin | IGN-ROLE-02 平台运维管理员 | 降级声明/运行参数/审批 FUNC-32·33 |
-| auditor | IGN-ROLE-03 交付审计员 | 全菜单只读 + 对账台账 |
-| ignviewer | IGN-ROLE-04 交付只读用户 | 目录/台账只读 |
-| (服务身份) | IGN-ROLE-05 执行机代理 | FUNC-08/19/23(跨中心视图与任务提交) |
+| ignadmin | IGN-ROLE-01 交付管理员 | 版本/预推/执行机/证书/任务全部业务写 + FUNC-31 提交 + FUNC-37 门面台账 |
+| opsadmin | IGN-ROLE-02 平台运维管理员 | 降级声明/运行参数/审批 FUNC-32·33 + FUNC-37 门面台账 |
+| auditor | IGN-ROLE-03 交付审计员 | 全菜单只读 + 对账台账 + FUNC-37 门面台账 |
+| ignviewer | IGN-ROLE-04 交付只读用户 | 目录/台账只读 + FUNC-37 门面台账 |
+| (服务身份) | IGN-ROLE-05 执行机代理 + 上游中心门面身份 | FUNC-08/19/23(跨中心视图与任务提交)、FUNC-34/35/36(交付门面受理/回执/撤销) |
 
 ### 快速启动
 
@@ -59,11 +87,15 @@ OPIC 开放智能算力平台的 **点火中心**(MCC 交付执行域):交付版
 go build -o bin/ignition-center ./cmd/techbase
 CREATE SCHEMA 项:psql -c "CREATE SCHEMA IF NOT EXISTS ign AUTHORIZATION postgres;"(库 opicdb)
 
-CENTER_CODE=ign DB_HOST=<pg> DB_PORT=5433 DB_USER=postgres DB_PASSWORD=*** DB_NAME=opicdb DB_SCHEMA=ign \
+# 口令(DB_PASSWORD / EVENTBUS_PASSWORD)只在部署环境注入,不写进命令行与仓库;
+# 交付执行位(§1.6.1):路径只在部署配置取值,不进代码常量/字典,留空即"本机执行位不可用"走 R-15
+CENTER_CODE=ign DB_HOST=<pg> DB_PORT=5433 DB_USER=postgres DB_NAME=opicdb DB_SCHEMA=ign \
 REDIS_ENABLED=false EVENTBUS_DRIVER=nats EVENTBUS_URL=nats://<nats>:14222 \
-EVENTBUS_USERNAME=opic EVENTBUS_PASSWORD=*** WORKFLOW_DRIVER=local METRICS_ENABLED=true APP_PORT=9709 \
+EVENTBUS_USERNAME=opic WORKFLOW_DRIVER=local METRICS_ENABLED=true APP_PORT=9709 \
+IGN_DELIVERY_TOOL_BIN=/opt/opic/delivery/bin/ezctl IGN_DELIVERY_TOOL_ROOT=/etc/kubeasz \
+IGN_DELIVERY_SSH_DIR=/root/.ssh IGN_DELIVERY_FACADE_TOKEN=<生产 .env 发放> \
 ./bin/ignition-center
-# 启动即完成:goose 迁移(000001..000004)→ M5 种子(角色/权限/菜单/账号/参数缺省/LOCAL 执行机)→ M6 审批流导入
+# 启动即完成:goose 迁移(000001..000005)→ M5 种子(角色/权限/菜单/账号/参数缺省/LOCAL 执行机/门面服务账号)→ M6 审批流导入
 ```
 
 ### 冒烟验证(已实测通过)
@@ -77,6 +109,20 @@ FUNC-24 取消 → CANCELLING;R-05 LOCAL 并发 4/4 容量拒绝;
 FUNC-31 强制注销 RMV-*(影响面 R-08 强制展示)→ IGN-ROLE-02 待办(归属校验:他人审批被拒)→ FUNC-32 通过 → R-07 拆除链 → REMOVED + 注销报告留痕;
 FUNC-33 驳回路径:状态不变意见留痕;R-06 心跳纠偏(本地 0 → 上报 9,留痕入台账);
 FUNC-29 统计 / FUNC-30 参数维护;AI 对话 + 只读 SQL(白名单/写拒绝/凭据表 INV-22 排除)。
+```
+
+v1.1 交付链路口径(由 `internal/service/ign_delivery_pg_test.go`·`ign_exec_test.go`·`ign_recap_test.go`·`ign_mask_test.go` +
+门面两层单测覆盖;真实挂载与上游联调在 3.200 待验):
+
+```
+未配 facade_token ⇒ 门面三接口一律 401(flat JSON,不泄漏配置态);
+Bearer 正确令牌 + 越权动作码(ezctl.new / scripts.* / rm -rf /)⇒ 403 GOVERNANCE_REFUSE 并审计;
+合法受理 step_code=02 ⇒ 200 + TSK-*,重复受理(同 source_task_no + source_step_index)⇒ 返回原任务(INV-35);
+节点增删类缺 nodes[] ⇒ 400;同集群已在途 ⇒ 409 排队拒绝(R-17);
+执行位未挂载 ⇒ 受理即刻 409 TOOL_UNAVAILABLE,不建任务行(R-15),LOCAL 健康列同口径派生;
+receipt/:ref?since_seq= ⇒ 状态 + 结论依据 + 增量日志行(游标单调,已脱敏行带 masked);
+平台重启后在途 RUNNING ⇒ B-AUTO-14 判 LOST(退出码位为空)+ TASK_LOST 留痕;
+日志行含口令/令牌形态 ⇒ 写前不可逆脱敏为 [已掩码](R-16/INV-40)。
 ```
 
 权限矩阵抽测:ignviewer(FUNC-06 可查 / FUNC-01 写被拒 SYS9103);审批归属:非受理角色被拒「该任务不属于当前用户」。
@@ -154,7 +200,7 @@ opic-techbase/
 ├── models/                       # 七模型 YAML(M1/M2/M5/M6/MU,不变)
 ├── frontend/                     # React 19 + antd 6 + RTK(全部页面重建)
 ├── docker-compose.infra.yml      # 数据栈:postgres:16 + redis:8
-├── docker-compose.yml            # 应用栈:techbase + frontend(nginx)+ traefik 网关
+├── docker-compose.yml            # 应用栈:ign(点火中心) + frontend(nginx)+ traefik 子域路由
 ├── Dockerfile / frontend/Dockerfile
 ├── Makefile / .env.example / .golangci.yml / .editorconfig
 ```
@@ -276,8 +322,8 @@ sales 登录 → 建草稿 → 提交(启动 FLOW-CUSTOMER-APPROVAL,状态「待
 | NATS（事件总线） | **`pkg/eventbus`**：`driver=inproc`（默认，零依赖）/`driver=nats`（JetStream at-least-once）；主题域约定 `opic.<域码>.<...>` | opic-net 内 `opic-nats:4222`（宿主 14222），stream `OPIC`（`opic.>` 捕获） |
 | Temporal（工作流） | **`pkg/workflowx`**：`driver=local`（默认）/`driver=temporal`（含 `NewWorkerWorker` worker 路由）；业务命名空间 `opic` | opic-net 内 `temporal:7233` |
 | ZITADEL（零信任） | `internal/api/auth/zitadel.go`（OIDC+PKCE，JWKS 验签，角色声明映射） | `https://auth.opic-ai.ccoe.tech` |
-| Harbor（镜像仓） | `make harbor-push`（镜像推 `192.168.3.200:18700/opic/techbase`；需 daemon insecure-registries 加 18700，变更窗口执行） | `http://192.168.3.200:18700` |
-| Traefik（入口） | compose 只声明 labels（`opic.stack=techbase` + 子域路由），不自起网关 | 子域 `techbase.opic-ai.ccoe.tech` |
+| Harbor（镜像仓） | `make harbor-push`（镜像推 `192.168.3.200:18700/opic/ign`；需 daemon insecure-registries 加 18700，变更窗口执行） | `http://192.168.3.200:18700` |
+| Traefik（入口） | compose 只声明 labels（`opic.stack=ign` + 子域路由），不自起网关 | 子域 `ign.opic-ai.ccoe.tech` |
 
 **中心仓复制改造三步**（以域码 `osys` 为例）：
 

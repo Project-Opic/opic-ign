@@ -1,5 +1,5 @@
 model_type: FLOW
-version: '1.0'
+version: '1.1'
 domain: 交付执行域
 flows:
 - id: FLOW-PROC-01
@@ -243,122 +243,137 @@ flows:
 - id: FLOW-PROC-03
   name: 任务分发与结果回流
   flowType: COLLABORATION
-  description: 把一个白名单动作安全送到执行机并拿回完整结果
-  businessObjectRefs: []
+  description: 把一个白名单动作安全送到执行位并拿回完整结果（v1.1：LOCAL 为本期执行位，REMOTE 分支保留登记语义但本期不执行；执行事实的结论判定与日志回填均在执行位侧）
+  businessObjectRefs:
+  - AGG-IGN-06
+  - AGG-IGN-03
   roleRefs:
   - IGN-ROLE-01
   trigger:
     triggerType: MANUAL
   preconditions: []
-  postconditions: []
+  postconditions:
+  - 任务进入终态（含 LOST）且结论依据已留痕；执行机计数与在途互斥口径一致
   startActivity: A01
   endActivities:
-  - A15
+  - A03
+  - A05
+  - A16
   activities:
   - activityId: A01
-    name: 提交任务：白名单动作 + 请求令牌
-    activityType: START
+    name: 提交任务：白名单动作 + 请求令牌（人工 FUNC-23；门面受理走 PROC-06）
+    activityType: USER_TASK
     roleRef: IGN-ROLE-01
-    behaviorRef: null
+    behaviorRef: FUNC-23
     nextActivities:
     - A02
   - activityId: A02
-    name: 治理校验 R-12
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
-    nextActivities:
-    - A03
+    name: 治理校验（白名单与无 shell / 命令面私有映射）
+    activityType: GATEWAY
+    ruleRef: R-12
+    branches:
+    - branchName: 白名单外或含拼接风险
+      ruleRef: R-12
+      targetActivity: A03
+    - branchName: 通过
+      isDefault: true
+      targetActivity: A04
   - activityId: A03
-    name: 治理拒绝：403 语义 + 拒绝审计
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
-    nextActivities:
-    - A04
+    name: 治理拒绝：403 语义 + 拒绝审计（终止；不是表单校验错误）
+    activityType: END
   - activityId: A04
-    name: 执行机容量原子校验 R-05
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
-    nextActivities:
-    - A05
+    name: 执行机容量原子校验 + 同集群在途互斥
+    activityType: GATEWAY
+    ruleRef: R-05
+    branches:
+    - branchName: 影响 0 行（容量拒绝）
+      ruleRef: R-05
+      targetActivity: A05
+    - branchName: 通过（互斥不满足时照常受理并置 RUNNING，语义为排队中 R-17）
+      isDefault: true
+      targetActivity: A06
   - activityId: A05
-    name: 容量拒绝：不进入队列
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
-    nextActivities:
-    - A06
+    name: 容量拒绝：不进入队列（终止）
+    activityType: END
   - activityId: A06
     name: 登记任务 + 计数递增
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
+    activityType: SYSTEM_TASK
+    behaviorRef: FUNC-23
+    ruleRef: R-17
     nextActivities:
     - A07
   - activityId: A07
-    name: mTLS 转发到执行机
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
-    nextActivities:
-    - A08
+    name: 执行位类型分流
+    activityType: GATEWAY
+    conditionExpression: Executor.executorType
+    branches:
+    - branchName: LOCAL（v1.1 本期执行位）
+      targetActivity: A08
+    - branchName: REMOTE（代理通道，本期不执行）
+      targetActivity: A11
   - activityId: A08
-    name: 代理 fork 子进程：独立 argv 无 shell
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
+    name: 本域后端进程 fork 子进程：独立 argv、无 shell、独立进程组
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-11
     nextActivities:
     - A09
   - activityId: A09
-    name: 登记远端任务号
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
+    name: 逐行采集：游标单调入库 + 写前不可逆脱敏
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-11
+    ruleRef: INV-38
     nextActivities:
     - A10
   - activityId: A10
-    name: 日志中继订阅回流
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
-    nextActivities:
-    - A11
+    name: 进程退出与结论判定（剧本汇总优先于退出码）
+    activityType: GATEWAY
+    behaviorRef: B-AUTO-12
+    ruleRef: R-14
+    branches:
+    - branchName: 退出码 / 汇总行给出结论
+      isDefault: true
+      targetActivity: A13
+    - branchName: 取消或超时，宽限终止
+      ruleRef: R-14
+      targetActivity: A14
+    - branchName: 执行痕迹不可验真（PID 不存在）
+      ruleRef: R-09
+      targetActivity: A15
   - activityId: A11
-    name: 任务结束
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
+    name: 域外：mTLS 转发执行机 → 代理 fork → 登记远端任务号
+    activityType: SYSTEM_TASK
+    behaviorRef: FUNC-23
     nextActivities:
     - A12
   - activityId: A12
-    name: 计数递减 + 任务终态 + 退出码留痕
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
+    name: 日志中继订阅回流（direction=RELAY）
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-08
     nextActivities:
     - A13
   - activityId: A13
-    name: 显式置败：原因分列（R-09）
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
+    name: 计数递减 + 终态 + 退出码 / 结论依据留痕
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-12
+    ruleRef: INV-37
     nextActivities:
-    - A14
+    - A16
   - activityId: A14
-    name: 以执行机为准回填：留痕（R-09）
-    activityType: TASK
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
+    name: 取消链：进程组 SIGTERM → 宽限 REF-15 → SIGKILL，置取消中
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-13
     nextActivities:
-    - A15
+    - A13
   - activityId: A15
-    name: 发布任务事件：集群域据此判定交付结果
+    name: 显式 LOST + VERDICT_UNRESOLVED + TRACE_LOST（不猜测成功、不伪装成退出码非零）
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-14
+    ruleRef: INV-37
+    nextActivities:
+    - A13
+  - activityId: A16
+    name: 发布任务事件：集群域据此判定交付结果（本域不判定结果）
     activityType: END
-    roleRef: IGN-ROLE-01
-    behaviorRef: null
-    nextActivities: []
 - id: FLOW-PROC-04
   name: 通道证书续期
   flowType: COLLABORATION
@@ -604,3 +619,136 @@ flows:
     roleRef: null
     behaviorRef: null
     nextActivities: []
+
+# ---- v1.1 新增：交付门面受理与回执对账（Q-70 裁定 ③ / Q-71 裁定 ④）----
+# 域外环节（虚线）：上游 O-CLC 登记 remote_task_ref、轮询回执、按结论写自己的步骤状态——
+# 本流程唯一回写对象是本域 ExecTask / TaskLogLine，不写上游任何对象（INV-36 反面）。
+- id: FLOW-PROC-06
+  name: 交付门面受理与回执对账
+  flowType: COLLABORATION
+  description: 让上游中心把一次交付步骤交给本域执行，并在断线 / 重启之后仍能拿到权威结论（而不是"没消息"）
+  businessObjectRefs:
+  - AGG-IGN-06
+  - AGG-IGN-03
+  roleRefs:
+  - IGN-ROLE-05
+  trigger:
+    triggerType: BEHAVIOR
+    behaviorRef: FUNC-34
+  preconditions:
+  - 双重鉴权通过（上游业务权限 + 本域执行权限），调用方为非人工服务身份
+  postconditions:
+  - 上游拿到本域任务引用与终态结论（含结论依据）；同集群在途互斥与并发额度口径成立；本域不回写上游对象
+  startActivity: A01
+  endActivities:
+  - A03
+  - A05
+  - A15
+  activities:
+  - activityId: A01
+    name: 上游受理请求：来源任务 + 来源步骤序号 + 步骤编码（+ 节点地址清单）
+    activityType: BEHAVIOR_CALL
+    behaviorRef: FUNC-34
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 治理校验（命令面私有映射解析 + 白名单可达面）
+    activityType: GATEWAY
+    ruleRef: R-13
+    branches:
+    - branchName: 动作不命中 / 非交付动作层 / 地址非法
+      ruleRef: R-12
+      targetActivity: A03
+    - branchName: 通过
+      isDefault: true
+      targetActivity: A04
+  - activityId: A03
+    name: 治理拒绝：403 + 拒绝审计（终止；与人工路径同一口径）
+    activityType: END
+  - activityId: A04
+    name: 执行位可用性与互斥额度判定
+    activityType: GATEWAY
+    ruleRef: R-15
+    branches:
+    - branchName: 命令面挂载缺失
+      ruleRef: R-15
+      targetActivity: A05
+    - branchName: 可用
+      isDefault: true
+      targetActivity: A06
+  - activityId: A05
+    name: 受理拒绝：TOOL_UNAVAILABLE（终止；绝不静默改走别的执行位）
+    activityType: END
+  - activityId: A06
+    name: 幂等键判定
+    activityType: GATEWAY
+    ruleRef: INV-35
+    branches:
+    - branchName: 命中非终态任务
+      ruleRef: INV-35
+      targetActivity: A07
+    - branchName: 无在途任务
+      isDefault: true
+      targetActivity: A08
+  - activityId: A07
+    name: 复用原任务：返回原 taskNo（不新建）
+    activityType: SYSTEM_TASK
+    behaviorRef: FUNC-34
+    nextActivities:
+    - A09
+  - activityId: A08
+    name: 新建任务 + 工作目录幂等前置
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-15
+    ruleRef: R-17
+    nextActivities:
+    - A09
+  - activityId: A09
+    name: 同步返回远端任务引用（执行本身异步派发 B-AUTO-11）
+    activityType: BEHAVIOR_CALL
+    behaviorRef: B-AUTO-11
+    nextActivities:
+    - A10
+    - A14
+  - activityId: A10
+    name: 域外：上游写回 remote_task_ref 并按周期轮询回执
+    activityType: BEHAVIOR_CALL
+    behaviorRef: FUNC-35
+    nextActivities:
+    - A11
+  - activityId: A11
+    name: 回执结论分流
+    activityType: GATEWAY
+    ruleRef: INV-37
+    branches:
+    - branchName: RUNNING / CANCELLING（继续轮询，无副作用）
+      targetActivity: A10
+    - branchName: 终态 + 结论依据
+      isDefault: true
+      targetActivity: A12
+    - branchName: LOST（痕迹不可存活）
+      ruleRef: R-09
+      targetActivity: A13
+  - activityId: A12
+    name: 按游标增量回吐已脱敏日志（单页上限 REF-14）
+    activityType: BEHAVIOR_CALL
+    behaviorRef: FUNC-35
+    ruleRef: INV-40
+    nextActivities:
+    - A15
+  - activityId: A13
+    name: 上游按对账语义回读：绝不重复提交，失联判定由 B-AUTO-14 给出
+    activityType: SYSTEM_TASK
+    behaviorRef: B-AUTO-14
+    ruleRef: R-09
+    nextActivities:
+    - A15
+  - activityId: A14
+    name: 撤销（FUNC-36）→ 进程组终止链 → 以执行事实定 CANCELLED
+    activityType: BEHAVIOR_CALL
+    behaviorRef: B-AUTO-13
+    nextActivities:
+    - A10
+  - activityId: A15
+    name: 域外：上游据结论写自己的步骤状态（步骤权威在 O-CLC，本域不越界）
+    activityType: END

@@ -203,14 +203,17 @@ func parseIgnTime(s string) (time.Time, bool) {
 // ---------- 平台配置项(REF-01~12 运行参数 FUNC-30;缺省即 M3 口径) ----------
 
 const (
-	ignCfgTokenTTLHours      = "token_ttl_hours"       // REF-01 引导令牌有效期(缺省 24)
-	ignCfgTaskTimeoutSeconds = "task_timeout_seconds"  // REF-02 任务默认超时(缺省 7200)
-	ignCfgHeartbeatTimeout   = "heartbeat_timeout_sec" // REF-03 心跳超时阈值(缺省 120)
-	ignCfgPrepushConcurrent  = "prepush_concurrency"   // REF-04 预推并发上限(缺省 4,热生效)
-	ignCfgCertRenewDays      = "cert_renew_days"       // REF-07 证书续期提前天数(缺省 14)
-	ignCfgSoftDeleteDays     = "soft_delete_days"      // REF-08 软删归档后天数(缺省 30)
-	ignCfgReplayWindowHours  = "replay_window_hours"   // REF-09 防重放窗口(缺省 24)
-	ignCfgReconcilePeriodSec = "reconcile_period_sec"  // REF-12 状态对账周期(缺省 60)
+	ignCfgTokenTTLHours      = "token_ttl_hours"         // REF-01 引导令牌有效期(缺省 24)
+	ignCfgTaskTimeoutSeconds = "task_timeout_seconds"    // REF-02 任务默认超时(缺省 7200)
+	ignCfgHeartbeatTimeout   = "heartbeat_timeout_sec"   // REF-03 心跳超时阈值(缺省 120)
+	ignCfgPrepushConcurrent  = "prepush_concurrency"     // REF-04 预推并发上限(缺省 4,热生效)
+	ignCfgCertRenewDays      = "cert_renew_days"         // REF-07 证书续期提前天数(缺省 14)
+	ignCfgSoftDeleteDays     = "soft_delete_days"        // REF-08 软删归档后天数(缺省 30)
+	ignCfgReplayWindowHours  = "replay_window_hours"     // REF-09 防重放窗口(缺省 24)
+	ignCfgReconcilePeriodSec = "reconcile_period_sec"    // REF-12 状态对账周期(缺省 60)
+	ignCfgReceiptLogBatch    = "receipt_log_batch"       // REF-14 门面单次回吐日志行上限(缺省 500)
+	ignCfgKillGraceSeconds   = "kill_grace_seconds"      // REF-15 取消/超时终止宽限(缺省 30)
+	ignCfgLogRetentionDays   = "task_log_retention_days" // REF-16 任务日志保留天数(缺省 14)
 )
 
 // defaultIgnConfigs 运行参数缺省(REF-* 口径;FUNC-30 可维护)。
@@ -224,6 +227,9 @@ func defaultIgnConfigs() []struct{ Key, Value, Desc string } {
 		{ignCfgSoftDeleteDays, "30", "REF-08 版本软删需归档后超过天数"},
 		{ignCfgReplayWindowHours, "24", "REF-09 请求令牌防重放窗口（小时）"},
 		{ignCfgReconcilePeriodSec, "60", "REF-12 状态对账周期（秒）"},
+		{ignCfgReceiptLogBatch, "500", "REF-14 门面单次回吐日志行数上限（缺省 500 行/次，超出携带续传游标）"},
+		{ignCfgKillGraceSeconds, "30", "REF-15 取消与超时的终止宽限（秒，SIGTERM 后再 SIGKILL）"},
+		{ignCfgLogRetentionDays, "14", "REF-16 任务日志保留天数（超期行由平台侧清理）"},
 	}
 }
 

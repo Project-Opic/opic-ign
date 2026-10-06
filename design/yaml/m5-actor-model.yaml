@@ -1,5 +1,5 @@
 model_type: ACTOR
-version: '1.0'
+version: '1.1'
 domain: 交付执行域
 actors:
 - actorId: ACTOR-IGN-ROLE-01
@@ -57,6 +57,7 @@ roles:
   - PERM-FUNC-27
   - PERM-FUNC-29
   - PERM-FUNC-31
+  - PERM-FUNC-37
 - roleId: IGN-ROLE-02
   name: 平台运维管理员
   permissions:
@@ -75,6 +76,7 @@ roles:
   - PERM-FUNC-30
   - PERM-FUNC-32
   - PERM-FUNC-33
+  - PERM-FUNC-37
 - roleId: IGN-ROLE-03
   name: 交付审计员
   permissions:
@@ -89,6 +91,7 @@ roles:
   - PERM-FUNC-27
   - PERM-FUNC-28
   - PERM-FUNC-29
+  - PERM-FUNC-37
 - roleId: IGN-ROLE-04
   name: 交付只读用户
   permissions:
@@ -102,12 +105,19 @@ roles:
   - PERM-FUNC-26
   - PERM-FUNC-27
   - PERM-FUNC-29
+  - PERM-FUNC-37
 - roleId: IGN-ROLE-05
   name: 执行机代理
+  # v1.1：本角色即矩阵二「05 = 非人工身份」那一格——调用方为执行机代理与下游中心服务身份；
+  # 门面三接口（FUNC-34~36）复用此格、不新增角色（需求文档 8.6 第 17 项），鉴权与留痕口径与 FUNC-23 一致。
   permissions:
   - PERM-FUNC-08
   - PERM-FUNC-19
   - PERM-FUNC-23
+  - PERM-FUNC-34
+  - PERM-FUNC-35
+  - PERM-FUNC-36
+
 permissions:
 - permissionId: PERM-FUNC-01
   targetType: BEHAVIOR
@@ -240,4 +250,22 @@ permissions:
 - permissionId: PERM-FUNC-33
   targetType: BEHAVIOR
   targetRef: FUNC-33
+  dataScope: ALL
+
+# ---- v1.1 增补：交付门面四件套权限（FUNC-34~37）----
+- permissionId: PERM-FUNC-34
+  targetType: BEHAVIOR
+  targetRef: FUNC-34
+  dataScope: ALL
+- permissionId: PERM-FUNC-35
+  targetType: BEHAVIOR
+  targetRef: FUNC-35
+  dataScope: ALL
+- permissionId: PERM-FUNC-36
+  targetType: BEHAVIOR
+  targetRef: FUNC-36
+  dataScope: ALL
+- permissionId: PERM-FUNC-37
+  targetType: BEHAVIOR
+  targetRef: FUNC-37
   dataScope: ALL

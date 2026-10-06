@@ -47,6 +47,9 @@ func main() {
 	host := env("DB_HOST", "192.168.3.200")
 	port := env("DB_PORT", "5433")
 	pass := env("DB_PASSWORD", env("PG_ADMIN_PASSWORD", ""))
+	// 中心隔离口径随 CENTER_CODE/DB_SCHEMA 派生:schema=ign、NATS 流=ign、主题域=opic.ign.>
+	code := env("CENTER_CODE", "ign")
+	schema := env("DB_SCHEMA", "ign")
 	results := map[string]string{}
 	failed := 0
 	run := func(name string, fn func() error) {
@@ -62,7 +65,7 @@ func main() {
 	}
 
 	if want["pg"] {
-		run("pg", func() error { return checkPG(host, port, pass) })
+		run("pg", func() error { return checkPG(host, port, pass, schema) })
 	}
 	if want["redis"] {
 		run("redis", func() error {
@@ -76,12 +79,13 @@ func main() {
 			eb, err := eventbus.New(eventbus.Options{Driver: "nats",
 				URL:      env("EVENTBUS_URL", "nats://"+host+":14222"),
 				Username: env("EVENTBUS_USERNAME", "opic"), Password: env("EVENTBUS_PASSWORD", env("NATS_PASSWORD", "")),
-				StreamName: "OPIC"})
+				StreamName: env("NATS_STREAM", code),
+				Subjects:   []string{"opic." + code + ".>"}})
 			if err != nil {
 				return err
 			}
 			defer eb.Close()
-			return checkEventbusRoundtrip(eb)
+			return checkEventbusRoundtrip(eb, code)
 		})
 	}
 	if want["temporal"] {
@@ -90,7 +94,7 @@ func main() {
 		})
 	}
 
-	fmt.Println("── opic-techbase × step1 冒烟 ──────────────────────")
+	fmt.Printf("── ignition-center(%s/%s) × step1 冒烟 ─────────\n", code, schema)
 	for _, k := range []string{"pg", "redis", "nats", "temporal"} {
 		if v, ok := results[k]; ok {
 			mark := "✓"
@@ -103,11 +107,11 @@ func main() {
 	if failed > 0 {
 		os.Exit(1)
 	}
-	fmt.Println("  全部通过 —— techbase 已集成 step1 基础设施")
+	fmt.Println("  全部通过 —— ignition-center 已集成 step1 基础设施")
 }
 
-func checkPG(host, port, pass string) error {
-	dsn := fmt.Sprintf("host=%s port=%s user=postgres password=%s dbname=opicdb sslmode=disable options=-csearch_path=otechbase", host, port, pass)
+func checkPG(host, port, pass, schema string) error {
+	dsn := fmt.Sprintf("host=%s port=%s user=postgres password=%s dbname=opicdb sslmode=disable options=-csearch_path=%s", host, port, pass, schema)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
 		return err
@@ -127,7 +131,7 @@ func checkPG(host, port, pass string) error {
 		return fmt.Errorf("读回: %v (v=%q)", err, v)
 	}
 	var cur string
-	if err := db.Raw(`SELECT current_schema()`).Scan(&cur).Error; err != nil || cur != "otechbase" {
+	if err := db.Raw(`SELECT current_schema()`).Scan(&cur).Error; err != nil || cur != schema {
 		return fmt.Errorf("search_path 未落 schema: current=%q err=%v", cur, err)
 	}
 	return nil
@@ -144,11 +148,11 @@ func checkRedis(host, port, pass string) error {
 	return c.Set(ctx, "smoke:probe", "ok", time.Minute).Err()
 }
 
-func checkEventbusRoundtrip(eb eventbus.EventBus) error {
+func checkEventbusRoundtrip(eb eventbus.EventBus, centerCode string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	got := make(chan string, 4)
-	sub, err := eb.Subscribe(ctx, "opic.smoke.roundtrip", "smoke-probe", func(_ context.Context, m eventbus.Message) error {
+	sub, err := eb.Subscribe(ctx, "opic."+centerCode+".smoke.roundtrip", "smoke-probe", func(_ context.Context, m eventbus.Message) error {
 		got <- string(m.Payload)
 		return nil
 	})
@@ -156,7 +160,7 @@ func checkEventbusRoundtrip(eb eventbus.EventBus) error {
 		return err
 	}
 	defer sub.Unsubscribe()
-	if err := eb.Publish(ctx, "opic.smoke.roundtrip", []byte("hello-step1")); err != nil {
+	if err := eb.Publish(ctx, "opic."+centerCode+".smoke.roundtrip", []byte("hello-step1")); err != nil {
 		return err
 	}
 	select {

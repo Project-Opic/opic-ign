@@ -34,7 +34,10 @@ func IgnDictionaries(c *gin.Context) {
 		"IGN_CNI_PLUGIN":       common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_CNI_PLUGIN", "IGN_CNI_PLUGIN")),
 		"IGN_CAPABILITY":       common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_CAPABILITY", "IGN_CAPABILITY")),
 		"IGN_ACTION":           common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_ACTION", "IGN_ACTION")),
-		"checkpoint_note":      metaIgnCheckpointNote(),
+		// v1.1：安装步骤参数域（INV-36）与结论依据（INV-37）——界面下拉/展示的唯一取值域来源
+		"IGN_INSTALL_STEP":   common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_INSTALL_STEP", "IGN_INSTALL_STEP")),
+		"IGN_VERDICT_SOURCE": common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_VERDICT_SOURCE", "IGN_VERDICT_SOURCE")),
+		"checkpoint_note":    metaIgnCheckpointNote(),
 	}))
 }
 
@@ -362,7 +365,7 @@ func IgnTaskSubmit(c *gin.Context) {
 		common.FailJSON(c, err)
 		return
 	}
-	common.OKJSON(c, row, "任务已提交（R-05 计数已递增;mTLS 转发为跨域通道,结果经回执端点回流）")
+	common.OKJSON(c, row, "任务已提交（R-05 计数已递增；本机执行位异步派发 B-AUTO-11，同集群有在途任务则排队 R-17）")
 }
 
 // IgnTaskCancel POST /api/v1/ign/task/:taskNo/cancel (FUNC-24)
@@ -372,7 +375,25 @@ func IgnTaskCancel(c *gin.Context) {
 		common.FailJSON(c, err)
 		return
 	}
-	common.OKJSON(c, row, "取消指令已登记（CANCELLING;代理确认后终态 CANCELLED）")
+	note, _ := row["cancel_note"].(string)
+	if note == "" {
+		note = "撤销请求已按幂等处理"
+	}
+	common.OKJSON(c, row, note)
+}
+
+// IgnTaskLogs GET /api/v1/ign/task/:taskNo/logs (FUNC-27;REP-11 流式明细)
+// p1=任务编号、p2=游标起点（增量续传，缺省最近 500 行）；分页 500/2000 由服务层按模型收口。
+func IgnTaskLogs(c *gin.Context) {
+	sinceSeq, _ := strconv.ParseInt(c.Query("since_seq"), 10, 64)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "500"))
+	data, err := service.TaskLogs(c.Param("taskNo"), sinceSeq, page, size)
+	if err != nil {
+		common.FailJSON(c, err)
+		return
+	}
+	common.OKJSON(c, data, "")
 }
 
 // IgnTaskList GET /api/v1/ign/task (FUNC-25;REP-09)

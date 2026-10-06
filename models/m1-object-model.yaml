@@ -1,10 +1,11 @@
 model_type: OBJECT
-version: '1.0'
+version: '1.1'
 domain: 交付执行域
 aggregates:
 - id: AGG-IGN-01
   name: 交付版本
   alias: DeliveryVersion
+  tableName: delivery_version
   aggregateType: AGGREGATE_ROOT
   description: 对象分类
   lifecycle:
@@ -107,6 +108,7 @@ aggregates:
 - id: AGG-IGN-02
   name: 镜像预推明细
   alias: ImagePrepushItem
+  tableName: image_prepush_item
   aggregateType: AGGREGATE_ROOT
   description: 对象分类
   lifecycle:
@@ -164,6 +166,7 @@ aggregates:
 - id: AGG-IGN-03
   name: 执行机
   alias: Executor
+  tableName: executor
   aggregateType: AGGREGATE_ROOT
   description: 对象分类
   lifecycle:
@@ -251,6 +254,7 @@ aggregates:
 - id: AGG-IGN-04
   name: 引导凭据
   alias: BootstrapCredential
+  tableName: bootstrap_credential
   aggregateType: AGGREGATE_ROOT
   description: 对象分类
   lifecycle:
@@ -308,6 +312,7 @@ aggregates:
 - id: AGG-IGN-05
   name: 通道证书绑定
   alias: ExecutorTlsBinding
+  tableName: executor_tls_binding
   aggregateType: AGGREGATE_ROOT
   description: 对象分类
   lifecycle:
@@ -375,6 +380,7 @@ aggregates:
 - id: AGG-IGN-06
   name: 执行任务
   alias: ExecTask
+  tableName: exec_task
   aggregateType: AGGREGATE_ROOT
   description: 对象分类
   lifecycle:
@@ -398,6 +404,13 @@ aggregates:
     type: Dict
     required: true
     unique: false
+    description: IGN_ACTION 白名单固定枚举；v1.1 三层可达面（交付动作层 / 内部前置层 ezctl.new / 平台运维层 scripts.*）见 R-12 与需求文档 7.3
+  - name: stepCode
+    label: 步骤编码
+    type: Dict
+    required: false
+    unique: false
+    description: 条件必填（v1.1）；IGN_INSTALL_STEP 01~07，仅 ezctl.setup 必填、其余动作必须为空（INV-36）。本域只认参数合法域，步骤状态机权威在 O-CLC
   - name: args
     label: 动作参数
     type: String
@@ -418,11 +431,24 @@ aggregates:
     type: Ref
     required: true
     unique: false
+  - name: sourceTaskNo
+    label: 来源任务标识
+    type: String
+    required: false
+    unique: false
+    description: 条件必填（v1.1）；上游中心（O-CLC）任务编号，门面受理必填、人工提交必须为空，跨域只存标识（INV-34）
+  - name: sourceStepIndex
+    label: 来源步骤序号
+    type: Integer
+    required: false
+    unique: false
+    description: 条件必填（v1.1）；上游步骤序号（≥1），与来源任务标识共同构成门面幂等键（INV-35）
   - name: requestTokenDigest
     label: 请求令牌摘要
     type: String
-    required: true
+    required: false
     unique: true
+    description: 条件必填（v1.1，原为必填）：人工提交必填；门面受理以幂等键替代令牌，该列为空 —— 摘要唯一索引只对非空值生效（INV-31 / INV-35）
   - name: remoteTaskId
     label: 远端任务标识
     type: String
@@ -438,6 +464,13 @@ aggregates:
     type: Integer
     required: false
     unique: false
+    description: 终态时由执行位回报；LOST 不得有退出码（INV-37）
+  - name: verdictSource
+    label: 结论依据
+    type: Dict
+    required: false
+    unique: false
+    description: 条件必填（v1.1）；IGN_VERDICT_SOURCE，终态必填 —— 剧本汇总优先于退出码（B-AUTO-12），LOST 专用 TRACE_LOST（INV-37；报表口径 7 的对象层落点）
   - name: failReason
     label: 失败原因
     type: Dict
@@ -473,7 +506,49 @@ aggregates:
     type: DateTime
     required: true
     unique: false
-  entities: []
+  entities:
+  - name: 任务日志行
+    alias: TaskLogLine
+    tableName: ign_task_log
+    description: 一条执行任务在执行位产生的输出行（表 ign_task_log / schema ign，v1.1 由 task_log 更名）。对象分类：聚合内子实体——不可独立存在、不独立编号（以「所属任务 + 行游标」定位）、任务删除时级联删除；高频时序数据不是台账，受保留期约束（REF-16）。v1.1 由「中继回流视图」升格为子实体：本机执行位下日志行是本域自己写入的数据行，逐行入库（INV-38）→ 写前不可逆脱敏（R-16 / INV-40）→ 门面按游标增量吐回（FUNC-35）；上游不留副本，两域之间不复制第二份日志存储。
+    localId: seq
+    cardinality: ZERO_OR_MORE
+    cascadeDelete: true
+    attributes:
+    - name: taskRef
+      label: 所属任务
+      type: Ref
+      required: true
+      description: 引用本域任务；与行游标联合唯一
+    - name: seq
+      label: 行游标
+      type: Integer
+      required: true
+      description: 任务内单调递增、只增不改；乱序或重复到达的行直接丢弃不入库（INV-38）；断线续传与门面增量回吐的起点
+    - name: direction
+      label: 流向
+      type: Dict
+      required: true
+      description: IGN_LOG_DIRECTION；TOOL（v1.1 执行位子进程逐行输出）/ PLATFORM / RELAY / AGENT
+    - name: logLine
+      label: 日志行
+      type: String
+      required: true
+      description: 落库前完成不可逆脱敏（INV-40）；超长截断并标注（REF-12）
+    - name: loggedAt
+      label: 产生时间
+      type: DateTime
+      required: true
+      description: 执行位侧采集时刻
+    - name: masked
+      label: 已脱敏
+      type: Boolean
+      required: true
+      description: v1.1；该行是否命中掩码规则后被改写 —— 审计需要「日志被动过」可见，而非静默替换
+    - name: createdAt
+      label: 登记时间
+      type: DateTime
+      required: true
 data_dictionaries:
 - id: DICT-IGN_VERSION_STATUS
   name: IGN_VERSION_STATUS
@@ -617,6 +692,10 @@ data_dictionaries:
       label: 已取消
       enabled: true
       sortOrder: 50
+    - code: LOST
+      label: 痕迹不可存活（v1.1 第四终态）
+      enabled: true
+      sortOrder: 60
 - id: DICT-IGN_PREPUSH_STATUS
   name: IGN_PREPUSH_STATUS
   types:
@@ -665,6 +744,14 @@ data_dictionaries:
       label: 执行机执行错误
       enabled: true
       sortOrder: 50
+    - code: TOOL_UNAVAILABLE
+      label: 执行位命令面挂载缺失（v1.1，受理即拒绝的唯一原因）
+      enabled: true
+      sortOrder: 60
+    - code: VERDICT_UNRESOLVED
+      label: 执行痕迹不可验真（v1.1，LOST 的专用原因）
+      enabled: true
+      sortOrder: 70
 - id: DICT-IGN_EXECUTOR_TYPE
   name: IGN_EXECUTOR_TYPE
   types:
@@ -800,7 +887,85 @@ data_dictionaries:
       enabled: true
       sortOrder: 140
     - code: scripts.tls_renew
-      label: 白名单固定枚举，扩白名单须需求变更
+      label: scripts.tls_renew
       enabled: true
       sortOrder: 150
+- id: DICT-IGN_INSTALL_STEP
+  name: IGN_INSTALL_STEP
+  types:
+  - typeCode: IGN_INSTALL_STEP
+    typeName: 安装步骤参数域（v1.1）
+    items:
+    - code: '01'
+      label: 环境准备
+      enabled: true
+      sortOrder: 10
+    - code: '02'
+      label: 部署 etcd 集群
+      enabled: true
+      sortOrder: 20
+    - code: '03'
+      label: 部署容器运行时
+      enabled: true
+      sortOrder: 30
+    - code: '04'
+      label: 部署控制面
+      enabled: true
+      sortOrder: 40
+    - code: '05'
+      label: 工作节点加入
+      enabled: true
+      sortOrder: 50
+    - code: '06'
+      label: 部署网络插件
+      enabled: true
+      sortOrder: 60
+    - code: '07'
+      label: 部署附加组件
+      enabled: true
+      sortOrder: 70
+- id: DICT-IGN_VERDICT_SOURCE
+  name: IGN_VERDICT_SOURCE
+  types:
+  - typeCode: IGN_VERDICT_SOURCE
+    typeName: 结论依据（v1.1）
+    items:
+    - code: EXIT_CODE
+      label: 退出码判定
+      enabled: true
+      sortOrder: 10
+    - code: PLAY_RECAP
+      label: 剧本汇总判定（优先于退出码）
+      enabled: true
+      sortOrder: 20
+    - code: AGENT_RECEIPT
+      label: 代理回执判定
+      enabled: true
+      sortOrder: 30
+    - code: TRACE_LOST
+      label: 痕迹不可验真（LOST 专用）
+      enabled: true
+      sortOrder: 40
+- id: DICT-IGN_LOG_DIRECTION
+  name: IGN_LOG_DIRECTION
+  types:
+  - typeCode: IGN_LOG_DIRECTION
+    typeName: 日志流向（v1.1）
+    items:
+    - code: TOOL
+      label: 交付工具输出（执行位子进程逐行）
+      enabled: true
+      sortOrder: 10
+    - code: PLATFORM
+      label: 平台注记
+      enabled: true
+      sortOrder: 20
+    - code: RELAY
+      label: 中继回流（REMOTE 通道）
+      enabled: true
+      sortOrder: 30
+    - code: AGENT
+      label: 代理回报（REMOTE 通道）
+      enabled: true
+      sortOrder: 40
 aggregate_associations: []

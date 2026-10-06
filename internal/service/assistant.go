@@ -54,7 +54,7 @@ func ontologyContext() string {
 		}
 	}
 	b.WriteString("数据表白名单(只读 SQL 可查):delivery_version, image_prepush_item, executor, exec_task, " +
-		"executor_tls_binding, ign_force_remove, ign_reconcile_log, ign_platform_config, task_log\n")
+		"executor_tls_binding, ign_force_remove, ign_reconcile_log, ign_platform_config, ign_task_log\n")
 	b.WriteString("关键业务规则:INV-01(版本名未归档唯一);INV-04(组件版本组创建后不可改,集群契约);" +
 		"INV-05(已归档登记字段冻结);INV-07(版本状态单向迁移);INV-08(同版本内仓库+标签唯一,预推明细由清单派生);" +
 		"INV-12(LOCAL 执行机系统注册至多一行,人工创建拒绝);INV-17(REMOVED 终态冻结);" +
@@ -64,6 +64,13 @@ func ontologyContext() string {
 		"INV-31(防重放:同执行机摘要唯一,重复提交返回原任务);R-04(引导失败达阈值锁定,解锁=重新生成令牌);" +
 		"R-05(任务分发与结束驱动执行机计数原子增减,超上限=容量拒绝);R-07(注销拆除链次序固定);" +
 		"R-08(强制注销前置=审批通过);R-10(服务端证书吊销 → 降级,拒绝新分发保护运行中)。\n")
+	b.WriteString("v1.1 交付链路规则:INV-34(跨域只存标识,cluster_ref/source_task_no 不直查他域表);" +
+		"INV-35(门面幂等键=来源任务标识+来源步骤序号,重复受理返回原任务);INV-36(安装族动作只认 ezctl.setup + 步骤编码 01~07," +
+		"步骤状态机权威在上游 O-CLC,本域不判顺序、不聚合整体成败);INV-37(第四终态 LOST=痕迹不可存活,退出码位为空," +
+		"结论依据 TRACE_LOST,与 FAILED/CANCELLED 分列);INV-38(日志行游标在任务内单调,子实体不独立编号);" +
+		"R-16/INV-40(口令/令牌/私钥写入前不可逆脱敏,masked 标记);R-15(命令面挂载缺失=本机执行位不可用," +
+		"受理即刻拒绝并记 TOOL_UNAVAILABLE,绝不静默换执行位);R-17(同集群任务排队,不并发交叉);" +
+		"7.3 白名单枚举≠可提交集合(ezctl.new 为 internal、scripts.* 为 platform,人工与门面均不可提交)。\n")
 	b.WriteString("业务编号:VER/EXE/BCR/TLS/TSK/RMV-YYYYMMDD-NNNN(三位前缀+日期+四位流水)。\n")
 	return b.String()
 }
@@ -166,14 +173,20 @@ func AssistantChat(uid int64, question string, accountID int64, model string, te
 			SUM(CASE WHEN task_status='RUNNING' THEN 1 ELSE 0 END) AS running,
 			SUM(CASE WHEN task_status='COMPLETED' THEN 1 ELSE 0 END) AS completed,
 			SUM(CASE WHEN task_status='FAILED' THEN 1 ELSE 0 END) AS failed,
-			SUM(CASE WHEN task_status='CANCELLED' THEN 1 ELSE 0 END) AS cancelled
+			SUM(CASE WHEN task_status='CANCELLED' THEN 1 ELSE 0 END) AS cancelled,
+			SUM(CASE WHEN task_status='LOST' THEN 1 ELSE 0 END) AS lost,
+			SUM(CASE WHEN source_task_no IS NOT NULL AND source_task_no <> '' THEN 1 ELSE 0 END) AS facade
 			FROM exec_task WHERE flag = 1`)
 		if err != nil {
 			return nil, err
 		}
 		return &AssistantReply{
-			Answer: fmt.Sprintf("任务台账:共 %d 个,其中执行中 %d、完成 %d、失败 %d、已取消 %d。动作必须命中 IGN_ACTION 白名单(INV-28),白名单外与含拼接风险的提交按治理拒绝处理(R-12,403 语义+审计);并发超上限即容量拒绝(R-05);FAILED 与 CANCELLED 分列(INV-30)。",
-				Int(row["n"]), Int(row["running"]), Int(row["completed"]), Int(row["failed"]), Int(row["cancelled"])),
+			Answer: fmt.Sprintf("任务台账:共 %d 个,其中执行中 %d、完成 %d、失败 %d、已取消 %d、痕迹不可存活 %d;门面受理 %d 个(其余为人工提交)。"+
+				"动作必须命中 IGN_ACTION 白名单(INV-28),白名单外与含拼接风险的提交按治理拒绝处理(R-12,403 语义+审计);"+
+				"并发超上限即容量拒绝(R-05);同集群按 R-17 排队;终态四值分列 COMPLETED/FAILED/CANCELLED/LOST(INV-30/INV-37),"+
+				"每个终态都带结论依据(EXIT_CODE/PLAY_RECAP/AGENT_RECEIPT/TRACE_LOST);执行位挂载缺失时受理即刻拒绝并记 TOOL_UNAVAILABLE(R-15)。",
+				Int(row["n"]), Int(row["running"]), Int(row["completed"]), Int(row["failed"]), Int(row["cancelled"]),
+				Int(row["lost"]), Int(row["facade"])),
 			Action: "/ign/task", Hints: ignHints(),
 		}, nil
 	case strings.Contains(q, "证书") || strings.Contains(q, "TLS") || strings.Contains(q, "tls"):
@@ -195,9 +208,14 @@ func AssistantChat(uid int64, question string, accountID int64, model string, te
 				"平台运维管理员在「审批中心-我的待办」通过/驳回 → 通过则先取消运行任务再执行拆除链(吊销双证书 → 凭据置已吊销 → 状态置已注销,R-07 次序固定);驳回则状态不变、意见留痕。空闲执行机走注销（空闲）直达,不进审批。",
 			Action: "/workbench/todo", Hints: ignHints(),
 		}, nil
-	case strings.Contains(q, "对账") || strings.Contains(q, "纠偏"):
+	case strings.Contains(q, "对账") || strings.Contains(q, "纠偏") || strings.Contains(q, "拒绝"):
 		return &AssistantReply{
-			Answer: "对账与纠偏台账(REP-12)记录三类事件:计数纠偏(R-06:心跳计数偏差超过 1,以执行机上报值强制覆写并留痕)、状态修正(R-09/R-10)、治理拒绝(R-12)。全部例外路径必须留痕,可在「日志与对账」页查看。",
+			Answer: "对账与纠偏台账(REP-12/REP-14)记录五类事件,受理侧拒绝与执行侧纠偏分列:" +
+				"治理拒绝 GOVERNANCE_REFUSE(R-12/R-13:白名单外动作、拼接风险提交、门面越权形态)、" +
+				"执行位不可用 TOOL_UNAVAILABLE(R-15:命令面挂载缺失,受理即刻拒绝,不静默换执行位)、" +
+				"计数纠偏 COUNT_CORRECT(R-06:心跳计数偏差超过 1,以执行机上报值强制覆写并留痕)、" +
+				"状态修正 STATUS_FIX(R-09/R-10)、痕迹不可存活判定 TASK_LOST(INV-37:平台重启后执行位进程无法验真,判定为 LOST 而非失败)。" +
+				"全部例外路径必须留痕,可在「日志与对账」页三个页签(任务日志·对账纠偏·门面受理台账)查看。",
 			Action: "/ign/log", Hints: ignHints(),
 		}, nil
 	case strings.Contains(q, "管理台") || strings.Contains(q, "管理控制台") || strings.Contains(lq, "admin"):
@@ -234,7 +252,7 @@ var selectOnlyRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH)\s.+$`)
 var AllowedSQLTables = []string{
 	"delivery_version", "image_prepush_item", "executor", "exec_task",
 	"executor_tls_binding", "ign_force_remove", "ign_reconcile_log",
-	"ign_platform_config", "task_log",
+	"ign_platform_config", "ign_task_log",
 }
 
 // SQLQueryResult 只读 SQL 工具结果。

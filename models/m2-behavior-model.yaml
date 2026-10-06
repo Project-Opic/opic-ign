@@ -1,5 +1,5 @@
 model_type: BEHAVIOR
-version: '1.0'
+version: '1.1'
 domain: 交付执行域
 behaviors:
 - id: FUNC-01
@@ -491,6 +491,16 @@ behaviors:
   - INV-31
   - INV-32
   - INV-33
+  - INV-34
+  - INV-35
+  - INV-36
+  - INV-37
+  - INV-38
+  - INV-39
+  - INV-40
+  - R-12
+  - R-15
+  - R-17
   requiredPermissions:
   - PERM-FUNC-23
   syncTriggers: []
@@ -508,6 +518,15 @@ behaviors:
   - INV-31
   - INV-32
   - INV-33
+  - INV-34
+  - INV-35
+  - INV-36
+  - INV-37
+  - INV-38
+  - INV-39
+  - INV-40
+  - R-09
+  - R-14
   requiredPermissions:
   - PERM-FUNC-24
   syncTriggers: []
@@ -525,6 +544,13 @@ behaviors:
   - INV-31
   - INV-32
   - INV-33
+  - INV-34
+  - INV-35
+  - INV-36
+  - INV-37
+  - INV-38
+  - INV-39
+  - INV-40
   requiredPermissions:
   - PERM-FUNC-25
   syncTriggers: []
@@ -543,6 +569,13 @@ behaviors:
   - INV-31
   - INV-32
   - INV-33
+  - INV-34
+  - INV-35
+  - INV-36
+  - INV-37
+  - INV-38
+  - INV-39
+  - INV-40
   requiredPermissions:
   - PERM-FUNC-26
   syncTriggers: []
@@ -561,6 +594,14 @@ behaviors:
   - INV-31
   - INV-32
   - INV-33
+  - INV-34
+  - INV-35
+  - INV-36
+  - INV-37
+  - INV-38
+  - INV-39
+  - INV-40
+  - R-16
   requiredPermissions:
   - PERM-FUNC-27
   syncTriggers: []
@@ -579,6 +620,14 @@ behaviors:
   - INV-31
   - INV-32
   - INV-33
+  - INV-34
+  - INV-35
+  - INV-36
+  - INV-37
+  - INV-38
+  - INV-39
+  - INV-40
+  - R-09
   requiredPermissions:
   - PERM-FUNC-28
   syncTriggers: []
@@ -683,4 +732,353 @@ behaviors:
   - R-10
   requiredPermissions:
   - PERM-FUNC-33
+  syncTriggers: []
+
+# ---- v1.1 增补：交付门面四件套（FUNC-34~37）与系统自动行为（B-AUTO-01~15）----
+# 门面三接口的调用方是**下游中心的服务身份**（非界面用户），故 triggerType=SYSTEM；
+# 可追溯门禁只约束 USER_ACTION 行为，FUNC-34/35/36 无界面控件（需求文档 3.2.1「查询类补充说明」）。
+- id: FUNC-34
+  name: 交付门面 · 任务受理
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 双重鉴权通过（上游业务权限 + 本域执行权限），服务身份记入 submittedBy
+  - 执行动作码命中 IGN_ACTION 白名单且属交付动作层（R-12 / R-13；白名单内但属内部前置层 ezctl.new 或平台运维层 scripts.* 者同样治理拒绝）
+  - 本机执行位可用：命令面挂载存在且可执行，否则受理即拒绝并记 TOOL_UNAVAILABLE（R-15，绝不静默改走别的执行位）
+  - 节点增删类动作必须携带节点地址清单且地址格式合法（R-13 解析时校验；其余动作该字段必须为空）
+  postconditions:
+  - 同步返回本域 taskNo 作为远端任务引用（上游据此写 remote_task_ref）；执行本身异步（B-AUTO-11）
+  - 受理安装首步前该集群工作目录内容已按登记事实对齐（B-AUTO-15，幂等可重入）
+  - 同集群存在在途任务时照常受理并置 RUNNING（语义为排队中，R-17），不引入新状态、不判为失败
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-30
+  - INV-31
+  - INV-32
+  - INV-33
+  - INV-34
+  - INV-35
+  - INV-36
+  - INV-37
+  - INV-38
+  - INV-39
+  - INV-40
+  - R-05
+  - R-12
+  - R-13
+  - R-15
+  - R-17
+  requiredPermissions:
+  - PERM-FUNC-34
+  syncTriggers: []
+- id: FUNC-35
+  name: 交付门面 · 回执与增量日志
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: SYSTEM
+  preconditions:
+  - 远端任务引用命中本域任务；未命中返回明确的"任务不存在"而非空回执
+  postconditions:
+  - 只读：不改任何对象，反复轮询无副作用（幂等读）
+  appliedRules:
+  - INV-37
+  - INV-38
+  - INV-40
+  - REF-14
+  - R-16
+  requiredPermissions:
+  - PERM-FUNC-35
+  syncTriggers: []
+  queryReportRef: null
+- id: FUNC-36
+  name: 交付门面 · 任务撤销
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 可撤销范围为 RUNNING / CANCELLING；终态直接返回当前终态（幂等，不报错）
+  postconditions:
+  - 与 FUNC-24 同一条进程组终止链（R-14）后置「取消中」；最终状态仍由执行事实决定（R-09）
+  - 取消不等于回滚：只终止执行，不撤销已产生的副作用
+  appliedRules:
+  - INV-29
+  - INV-30
+  - INV-32
+  - INV-37
+  - R-09
+  - R-14
+  requiredPermissions:
+  - PERM-FUNC-36
+  syncTriggers: []
+- id: FUNC-37
+  name: 门面受理台账查询
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions: []
+  postconditions: []
+  appliedRules:
+  - INV-34
+  - INV-35
+  - INV-37
+  requiredPermissions:
+  - PERM-FUNC-37
+  syncTriggers: []
+  queryReportRef: REP-14
+- id: B-AUTO-01
+  name: 发行包下载执行
+  ownerEntity: AGG-IGN-01
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 版本处于「下载中」且发行包地址合法
+  postconditions:
+  - 下载 → 摘要强校验 → 解压缓存 → 置就绪；校验不匹配删除已下载文件重来（R-02）
+  appliedRules:
+  - INV-02
+  - INV-06
+  - INV-07
+  - R-02
+  - REF-11
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-02
+  name: 预推调度与执行
+  ownerEntity: AGG-IGN-02
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 版本已就绪且默认仓库项目已引用（REF-04 前置）
+  postconditions:
+  - 逐镜像复制（并发上限取 REF-04）并逐镜像落明细；断点续推沿用已成功的明细行
+  appliedRules:
+  - INV-08
+  - INV-09
+  - INV-10
+  - R-01
+  - REF-04
+  - REF-11
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-03
+  name: 本地执行机自动注册
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 平台启动（LOCAL 行由系统自持，无人工登记入口）
+  postconditions:
+  - 幂等 upsert 唯一 LOCAL 行；重启只刷新心跳、不发布事件
+  appliedRules:
+  - INV-11
+  - INV-15
+  - INV-18
+  - REF-10
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-04
+  name: 心跳超时检测
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 最近心跳时间超过阈值 REF-03
+  postconditions:
+  - 发布「不可达」结论事件；不改治理状态（治理状态与心跳健康正交，Q-10）
+  appliedRules:
+  - INV-16
+  - REF-03
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-05
+  name: 证书临期自动续期
+  ownerEntity: AGG-IGN-05
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 证书剩余天数 ≤ 提前天数 REF-07（剩余天数即时计算、不落库）
+  postconditions:
+  - 触发轮换；失败保留旧证书并置待续期并告警，不中断通道
+  appliedRules:
+  - INV-25
+  - INV-26
+  - INV-27
+  - R-03
+  - REF-06
+  - REF-07
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-06
+  name: 订阅轮换事件推送
+  ownerEntity: AGG-IGN-05
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 收到 O-CRT 证书轮换事件
+  postconditions:
+  - 新证书推送执行机热加载；失败重试后回滚保留旧证书
+  appliedRules:
+  - INV-25
+  - INV-27
+  - REF-05
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-07
+  name: 订阅吊销事件处置
+  ownerEntity: AGG-IGN-03
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 收到 O-CRT 证书吊销事件
+  postconditions:
+  - 服务端证书被吊销 ⇒ 执行机置降级态（拒绝新任务分发、运行中任务保护）；平台客户端证书不建对象、只出告警
+  appliedRules:
+  - INV-17
+  - R-10
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-08
+  name: 日志中继与断线重连
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 任务已分发至 REMOTE 执行位
+  postconditions:
+  - 订阅执行机日志流写入平台统一通道（回流行 direction=RELAY）；重试耗尽显式置败、不静默
+  appliedRules:
+  - INV-38
+  - INV-39
+  - INV-40
+  - R-09
+  - R-16
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-09
+  name: 状态对账
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 对账周期到点（REF-12）
+  postconditions:
+  - 本地与执行位结论不一致时以执行位为准回填任务状态与结论依据，修正必须留痕入对账台账
+  appliedRules:
+  - INV-29
+  - INV-32
+  - INV-37
+  - R-09
+  - REF-12
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-10
+  name: 崩溃恢复
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 平台启动时存在非终态任务
+  postconditions:
+  - 重建运行中任务的中继、先对账再续拉；执行位侧任务无法验真者按 B-AUTO-14 置 LOST
+  appliedRules:
+  - INV-29
+  - INV-32
+  - INV-37
+  - R-09
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-11
+  name: 本机执行位任务执行
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 受理事务已提交（门面受理 FUNC-34 或人工提交 FUNC-23），异步派发不阻塞受理
+  postconditions:
+  - 在 LOCAL 执行位以独立 argv 直调命令面（无 shell 解释）；子进程置独立进程组（B-AUTO-13 的前置）
+  - 逐行采集输出并批量入库（direction=TOOL），游标单调、写前脱敏（INV-38 / INV-40 / R-16）
+  appliedRules:
+  - INV-28
+  - INV-29
+  - INV-36
+  - INV-38
+  - INV-40
+  - R-05
+  - R-12
+  - R-14
+  - R-16
+  - R-17
+  - REF-02
+  - REF-15
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-12
+  name: 结论判定网关
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 执行位子进程退出
+  postconditions:
+  - 判定次序：剧本汇总（recap）行优先于退出码 —— 汇总存在失败主机即 FAILED；无汇总行才以退出码为准（EXIT_CODE）
+  - 终态写入结论依据 verdictSource（INV-37），并收口该任务的日志游标右界
+  appliedRules:
+  - INV-29
+  - INV-30
+  - INV-37
+  - R-14
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-13
+  name: 取消与超时处置
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 收到撤销请求（FUNC-24 / FUNC-36）或超时到点（timeoutSeconds）
+  postconditions:
+  - 进程组终止链：SIGTERM → 宽限 REF-15 → SIGKILL；置「取消中」，最终状态仍以执行事实决定（R-09）
+  appliedRules:
+  - INV-29
+  - INV-30
+  - INV-32
+  - R-09
+  - R-14
+  - REF-02
+  - REF-15
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-14
+  name: 执行痕迹失联判定与崩溃恢复
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 平台启动或周期对账时，运行中任务的执行痕迹无法验真（PID 不存在、日志右界不再推进且无退出码）
+  postconditions:
+  - 显式置 LOST + 结论依据 TRACE_LOST + 原因 VERDICT_UNRESOLVED，且不得写退出码（INV-37）—— 不猜测成功、不把"无法知道"伪装成具体结论
+  appliedRules:
+  - INV-29
+  - INV-30
+  - INV-37
+  - R-09
+  - R-14
+  requiredPermissions: []
+  syncTriggers: []
+- id: B-AUTO-15
+  name: 集群工作目录幂等前置
+  ownerEntity: AGG-IGN-06
+  behaviorType: COMMAND
+  triggerType: SYSTEM
+  preconditions:
+  - 受理安装首步（FUNC-34 命中安装族步骤 01）
+  postconditions:
+  - 按登记事实把该集群工作目录的清单与配置对齐（幂等可重入）；具体手段属本域命令面私有事实、不进模型（Q-69 裁定 ②）
+  appliedRules:
+  - INV-36
+  - R-13
+  - REF-13
+  requiredPermissions: []
   syncTriggers: []

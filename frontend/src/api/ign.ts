@@ -6,6 +6,19 @@ export interface PortableRow {
   [key: string]: unknown
 }
 
+/** M1 DICT-* 的启用项：界面下拉与状态映射的唯一取值域来源 */
+export interface DictItem {
+  code: string
+  label: string
+}
+
+/** 从 /api/v1/ign/dictionaries 的响应里取某个字典的项（该响应同时带 checkpoint_note 说明位） */
+export function dictItems(all: Record<string, unknown> | null | undefined, code: string): DictItem[] {
+  const raw = all?.[code]
+  if (!Array.isArray(raw)) return []
+  return raw.map((it) => ({ code: String((it as DictItem)?.code ?? ''), label: String((it as DictItem)?.label ?? '') }))
+}
+
 /* ---------- AGG-IGN-01 交付版本 ---------- */
 
 export interface DeliveryVersion {
@@ -111,9 +124,13 @@ export interface ExecTask {
   env_masked?: string
   working_dir: string | null
   cluster_ref: string
+  step_code?: string | null
   task_status: string
   exit_code: number | null
   fail_reason: string | null
+  verdict_source?: string | null
+  source_task_no?: string | null
+  source_step_index?: number | null
   timeout_seconds: number
   started_at: string | null
   ended_at: string | null
@@ -121,8 +138,58 @@ export interface ExecTask {
   submitted_by: string
   reconciled_note: string | null
   status_source?: string
-  logs?: PortableRow[]
+  source_note?: string
+  dispatch_note?: string
+  replayed?: boolean
+  replay_note?: string
+  log_cursor?: number
+  log_line_count?: number
+  logs?: TaskLogLine[]
   created_at: string
+}
+
+/* ---------- TaskLogLine 子实体(REP-11;日志行不独立编号，只有所属任务 + 行游标) ---------- */
+
+export interface TaskLogLine {
+  seq: number
+  direction: string
+  log_line: string
+  masked: boolean
+  logged_at: string | null
+}
+
+/** REP-11：游标右界与「缺失行数」同行呈现(INV-38 的界面落点) */
+export interface TaskLogPage {
+  list: TaskLogLine[]
+  total: number
+  page: number
+  size: number
+  log_cursor: number
+  gap_lines: number
+  gap_note?: string
+  masked_count: number
+}
+
+/* ---------- 门面受理台账(FUNC-37 / REP-14) ---------- */
+
+export interface FacadeTask {
+  task_no: string
+  source_task_no: string
+  source_step_index: number | null
+  action: string
+  step_code: string | null
+  cluster_ref: string
+  task_status: string
+  verdict_source: string | null
+  exit_code: number | null
+  fail_reason: string | null
+  started_at: string | null
+  ended_at: string | null
+  duration_ms: number | null
+  submitted_by: string
+  created_at: string
+  log_line_count: number
+  log_cursor: number
 }
 
 /* ---------- 强制注销申请(FUNC-31~33) ---------- */
@@ -145,14 +212,62 @@ export interface ForceRemoveApply {
   created_at: string
 }
 
-/* ---------- 运行观测(FUNC-29/30) ---------- */
+/* ---------- 运行观测(FUNC-29/30;REP-13 九块 c1~c9) ---------- */
+
+/** REP-13 分组计数块的统一形状 */
+export interface StatBucket {
+  code: string
+  count: number
+}
+
+/** 观测类卡片：与台账事实视觉可分，各自带扫描时间(口径 7) */
+export interface ObservedCard {
+  scanned_at?: string
+  note?: string
+  [key: string]: unknown
+}
 
 export interface IgnStats {
+  // c1 版本状态分布 + 兼容位
   version_total: number
   version_available: number
+  version_status_dist?: StatBucket[]
+  // c2 预推完成度
+  prepush_status_dist?: StatBucket[]
+  // c3 执行机治理分布 + c4 健康快照(观测类)
+  executor_status_dist?: StatBucket[]
   executor_ready: number
   executor_unreachable: number
+  health_snapshot?: ObservedCard & { ready?: number; unreachable?: number; timeout_seconds?: number }
+  // c5 任务结论计数(四终态分列；LOST 不并入失败，INV-30)
+  task_completed?: number
+  task_completed_7d?: number
+  task_failed?: number
+  task_failed_7d?: number
+  task_cancelled?: number
+  task_cancelled_7d?: number
+  task_lost?: number
+  task_lost_7d?: number
+  task_open?: number
   task_success_7d: number
+  // c6 门面受理量与结论依据分布(INV-34 与人工量分列)
+  facade_accept_count?: number
+  facade_accept_7d?: number
+  manual_submit_count?: number
+  verdict_source_dist?: StatBucket[]
+  // c7 执行位可用(观测类，R-15)
+  local_exec_available?: boolean
+  local_exec_observation?: ObservedCard & {
+    available?: boolean
+    reason?: string
+    work_root?: string
+    tool_bin?: string
+  }
+  // c8 拒绝审计计数(Z1 治理拒绝 / Z2 执行位不可用，与执行结论分列)
+  refuse_governance_count?: number
+  refuse_tool_unavailable_count?: number
+  // c9 纠偏计数
+  correct_count?: Record<string, number>
   reconcile_count: number
   params: Record<string, string>
 }
@@ -168,7 +283,7 @@ export interface IgnParam {
 
 export const ignApi = {
   dictionaries() {
-    return http.get<Record<string, PortableRow[]>>('/api/v1/ign/dictionaries')
+    return http.get<Record<string, unknown>>('/api/v1/ign/dictionaries')
   },
 
   /* 交付版本(FUNC-01~08) */
@@ -246,7 +361,7 @@ export const ignApi = {
   },
 
   /* 执行任务(FUNC-23~28) */
-  submitTask(data: { executor_id: number; action: string; args?: string; env?: string; working_dir?: string; cluster_ref: string; timeout_seconds?: number; request_token?: string }) {
+  submitTask(data: { executor_id: number; action: string; step_code?: string; args?: string; env?: string; cluster_ref: string; timeout_seconds?: number; request_token?: string }) {
     return http.post<ExecTask>('/api/v1/ign/task', data)
   },
   cancelTask(taskNo: string) {
@@ -258,8 +373,29 @@ export const ignApi = {
   getTask(taskNo: string) {
     return http.get<ExecTask>(`/api/v1/ign/task/${taskNo}`)
   },
+  /**
+   * FUNC-27 / REP-11 任务日志明细：按行游标升序、增量续传(since_seq)、分页由服务层按模型收口 500/2000。
+   * 不提供导出(口径 5)。
+   */
+  taskLogs(taskNo: string, params?: { since_seq?: number; page?: number; size?: number }) {
+    return http.get<TaskLogPage>(`/api/v1/ign/task/${taskNo}/logs`, params)
+  },
   listReconcile(params: { page: number; size: number; event_type?: string; keyword?: string }) {
     return http.get<PageResult<PortableRow>>('/api/v1/ign/reconcile', params)
+  },
+
+  /* 门面受理台账(FUNC-37 / REP-14;固定过滤「来源任务标识非空」) */
+  listFacadeTasks(params: {
+    page: number
+    size: number
+    source_task_no?: string
+    source_step_index?: number | string
+    cluster_ref?: string
+    step_code?: string
+    verdict_source?: string
+    task_status?: string
+  }) {
+    return http.get<PageResult<FacadeTask>>('/api/v1/ign/facade/task', params)
   },
 
   /* 强制注销(FUNC-31~33) */

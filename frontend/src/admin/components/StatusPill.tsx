@@ -115,6 +115,8 @@ export const IGN_TASK_STATUS_TONE: Record<string, { tone: StatusTone; label: str
   COMPLETED: { tone: 'success', label: '完成' },
   FAILED: { tone: 'danger', label: '失败' },
   CANCELLED: { tone: 'muted', label: '已取消' },
+  /** v1.1 第四终态:痕迹不可存活 —— 中性色,与失败分列(INV-37/B-CONF-13) */
+  LOST: { tone: 'muted', label: '痕迹不可存活' },
 }
 
 export function IgnTaskStatusPill({ status }: { status: string }) {

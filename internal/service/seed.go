@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"gitcode.com/opic-ontology/opic-techbase/internal/config"
+	"gitcode.com/opic-ontology/opic-techbase/internal/pkg/auth"
 	"gitcode.com/opic-ontology/opic-techbase/internal/pkg/ontology"
 	"gitcode.com/opic-ontology/opic-techbase/internal/store"
 )
@@ -82,6 +84,11 @@ var seedIgnPermissions = []struct{ Code, Name, TargetRef string }{
 	{"ign:FUNC-31", "强制注销 · 提交申请", "FUNC-31"},
 	{"ign:FUNC-32", "强制注销 · 通过", "FUNC-32"},
 	{"ign:FUNC-33", "强制注销 · 驳回", "FUNC-33"},
+	// v1.1 交付门面四件套（M5 PERM-FUNC-34~37；权限码 = ign:FUNC-xx）
+	{"ign:FUNC-34", "交付门面 · 任务受理", "FUNC-34"},
+	{"ign:FUNC-35", "交付门面 · 回执与增量日志", "FUNC-35"},
+	{"ign:FUNC-36", "交付门面 · 任务撤销", "FUNC-36"},
+	{"ign:FUNC-37", "门面受理台账查询", "FUNC-37"},
 }
 
 // seedPermissions 平台权限(管理控制台/流程引擎;fork 保留)。
@@ -156,25 +163,28 @@ var seedRolePermissions = map[string][]string{
 		"ign:FUNC-13", "ign:FUNC-14", "ign:FUNC-15", "ign:FUNC-16", "ign:FUNC-17", "ign:FUNC-18",
 		"ign:FUNC-20", "ign:FUNC-22",
 		"ign:FUNC-23", "ign:FUNC-24", "ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27",
-		"ign:FUNC-29", "ign:FUNC-31",
+		"ign:FUNC-29", "ign:FUNC-31", "ign:FUNC-37",
 	},
 	"IGN-ROLE-02": {
 		"ign:FUNC-06", "ign:FUNC-07", "ign:FUNC-12", "ign:FUNC-17", "ign:FUNC-18",
 		"ign:FUNC-21", "ign:FUNC-22",
 		"ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-28", "ign:FUNC-29", "ign:FUNC-30",
-		"ign:FUNC-32", "ign:FUNC-33",
+		"ign:FUNC-32", "ign:FUNC-33", "ign:FUNC-37",
 	},
 	"IGN-ROLE-03": {
 		"ign:FUNC-06", "ign:FUNC-07", "ign:FUNC-12", "ign:FUNC-17", "ign:FUNC-18",
 		"ign:FUNC-22",
-		"ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-28", "ign:FUNC-29",
+		"ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-28", "ign:FUNC-29", "ign:FUNC-37",
 	},
 	"IGN-ROLE-04": {
 		"ign:FUNC-06", "ign:FUNC-07", "ign:FUNC-12", "ign:FUNC-17", "ign:FUNC-18",
-		"ign:FUNC-22", "ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-29",
+		"ign:FUNC-22", "ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-29", "ign:FUNC-37",
 	},
-	// IGN-ROLE-05 执行机代理:PERM-FUNC-08/19/23(服务身份;任务回执与心跳为登录即可端点)
-	"IGN-ROLE-05": {"ign:FUNC-08", "ign:FUNC-19", "ign:FUNC-23"},
+	// IGN-ROLE-05 执行机代理 + 下游中心服务身份（M5 注释：门面三接口复用此格、不新增角色）
+	"IGN-ROLE-05": {
+		"ign:FUNC-08", "ign:FUNC-19", "ign:FUNC-23",
+		"ign:FUNC-34", "ign:FUNC-35", "ign:FUNC-36",
+	},
 }
 
 // ensureAdminRole 内置超管角色(代码层 GetPermissionCodes 对 code=admin 注入 "*";幂等)。
@@ -223,6 +233,11 @@ func EnsureSeed() error {
 	}
 	if count > 0 {
 		if err := ensureAdminRole(); err != nil {
+			return err
+		}
+		// 存量库幂等回填：v1.1 新增的权限矩阵/配置键/LOCAL 执行机/门面服务账号
+		// （EnsureSeed 主路径只在空库执行，不回填则新接口直接 403、执行位无从登记）
+		if err := backfillIgnSeed(); err != nil {
 			return err
 		}
 		return ensureFlowDefinitions()
@@ -315,6 +330,10 @@ func EnsureSeed() error {
 	if err := EnsureLocalExecutor(); err != nil {
 		return err
 	}
+	// 交付门面服务账号（FUNC-34~36 的本域身份；M5 IGN-ROLE-05 非人工身份那一格）
+	if err := EnsureFacadeServiceUser(); err != nil {
+		return err
+	}
 	// 内置超管角色与 admin 账号绑定(用户落库之后执行)
 	if err := ensureAdminRole(); err != nil {
 		return err
@@ -369,4 +388,120 @@ func ensureFlowDefinitions() error {
 		}
 	}
 	return nil
+}
+
+// backfillIgnSeed 存量库幂等回填（模型是唯一语义来源：M5 v1.1 新增的权限矩阵必须在存量库同样入库，
+// 否则门面接口在 perm() 处直接 403；配置键、LOCAL 执行机与门面服务账号同理）。
+func backfillIgnSeed() error {
+	for _, p := range seedIgnPermissions {
+		exists, err := qOne(`SELECT id FROM sys_permission WHERE code = ?`, p.Code)
+		if err != nil {
+			return err
+		}
+		if exists != nil {
+			continue
+		}
+		if _, err := qExec(`
+			INSERT INTO sys_permission (code, name, target_type, target_ref, data_scope, status)
+			VALUES (?, ?, 'BEHAVIOR', ?, 'ALL', 1)`, p.Code, p.Name, p.TargetRef); err != nil {
+			return err
+		}
+	}
+	for _, r := range seedRoles {
+		if err := ensureRow("sys_role", "code", r.Code,
+			`INSERT INTO sys_role (name, code, parent_id, description, status) VALUES (?, ?, 0, ?, 1)`,
+			r.Name, r.Code, r.Desc); err != nil {
+			return err
+		}
+	}
+	for roleCode, permCodes := range seedRolePermissions {
+		role, err := qOne(`SELECT id FROM sys_role WHERE code = ?`, roleCode)
+		if err != nil || role == nil {
+			return err
+		}
+		for _, pc := range permCodes {
+			perm, err := qOne(`SELECT id FROM sys_permission WHERE code = ?`, pc)
+			if err != nil || perm == nil {
+				return err
+			}
+			bound, err := qCount(`
+				SELECT COUNT(*) FROM sys_role_permission WHERE role_id = ? AND permission_id = ?`,
+				toInt(role["id"]), toInt(perm["id"]))
+			if err != nil {
+				return err
+			}
+			if bound == 0 {
+				if _, err := qExec(`INSERT INTO sys_role_permission (role_id, permission_id) VALUES (?, ?)`,
+					toInt(role["id"]), toInt(perm["id"])); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, c := range defaultIgnConfigs() {
+		v, err := ignConfigGet(store.DB, c.Key)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(v) == "" {
+			if err := upsertIgnConfig(store.DB, c.Key, c.Value, c.Desc, 1); err != nil {
+				return err
+			}
+		}
+	}
+	if err := EnsureLocalExecutor(); err != nil {
+		return err
+	}
+	return EnsureFacadeServiceUser()
+}
+
+// EnsureFacadeServiceUser 交付门面服务账号（IGN-ROLE-05 非人工身份那一格；幂等）。
+// 口令为随机不可用值：门面对上游只认通道令牌（delivery.facade_token），不存在密码登录路径。
+func EnsureFacadeServiceUser() error {
+	name := strings.TrimSpace(config.Config.Delivery.FacadeUser)
+	if name == "" {
+		name = "ignition-agent"
+	}
+	row, err := qOne(`SELECT id FROM sys_user WHERE username = ?`, name)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		uid, err := CreateUser(map[string]any{
+			"username":  name,
+			"password":  "facade-managed:" + auth.NewState(),
+			"real_name": "交付门面服务身份（O-CLC 等下游中心）",
+			"actor_type": "SERVICE",
+			"status":    float64(1),
+		})
+		if err != nil {
+			return err
+		}
+		row = map[string]any{"id": uid}
+	}
+	role, err := qOne(`SELECT id FROM sys_role WHERE code = 'IGN-ROLE-05'`)
+	if err != nil || role == nil {
+		return err
+	}
+	n, err := qCount(`SELECT COUNT(*) FROM sys_user_role WHERE user_id = ? AND role_id = ?`,
+		toInt(row["id"]), toInt(role["id"]))
+	if err != nil || n > 0 {
+		return err
+	}
+	_, err = qExec(`INSERT INTO sys_user_role (user_id, role_id) VALUES (?, ?)`,
+		toInt(row["id"]), toInt(role["id"]))
+	return err
+}
+
+// FacadeServiceAccount 门面服务账号（中间件把通道令牌解析到本域身份；未登记返回 0）。
+func FacadeServiceAccount() (int64, string) {
+	name := strings.TrimSpace(config.Config.Delivery.FacadeUser)
+	if name == "" {
+		return 0, ""
+	}
+	row, err := qOne(`SELECT id FROM sys_user WHERE username = ? AND status = 1`, name)
+	if err != nil || row == nil {
+		return 0, ""
+	}
+	return toInt(row["id"]), name
 }

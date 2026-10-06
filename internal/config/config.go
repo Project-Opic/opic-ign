@@ -97,6 +97,19 @@ var Config struct {
 		// BaseURL SSO 回调后 302 回前端的绝对基址(空则相对路径——仅前后端同域可用)
 		BaseURL string `yaml:"base_url"`
 	} `yaml:"frontend"`
+	// Delivery 本机执行位与交付门面(v1.1;需求文档 1.6.1 / 《编制说明》C.3.3)。
+	// 三条纪律:① 挂载路径与可执行文件**只**以本段配置值存在(不进代码常量、不进字典、
+	//    界面只读不可维护);② tool_bin 为空或不可执行 ⇒ 执行位不可用 ⇒ 受理即拒绝并记
+	//    TOOL_UNAVAILABLE(R-15),绝不静默改走别的执行位;③ 动作码→argv 的映射属本域私有
+	//    事实(service/ign_exec.go),本段只给出它所调用的可执行文件。
+	Delivery struct {
+		ToolBin     string `yaml:"tool_bin"`     // 命令面可执行文件绝对路径(只读挂载内)
+		ToolRoot    string `yaml:"tool_root"`    // 发行包根目录(只读挂载;工作目录派生基准)
+		WorkDir     string `yaml:"work_dir"`     // 集群工作目录父目录(可写挂载;缺省 = tool_root)
+		FacadeToken string `yaml:"facade_token"` // 交付门面服务身份令牌(上游中心 Bearer;空 ⇒ 门面关闭)
+		FacadeUser  string `yaml:"facade_user"`  // 门面服务账号(绑 IGN-ROLE-05;缺省 ignition-agent)
+		SSHDir      string `yaml:"ssh_dir"`      // 免密 SSH 私钥目录(路径透传给命令面;内容零出口)
+	} `yaml:"delivery"`
 }
 
 var once sync.Once
@@ -190,6 +203,10 @@ func applyDefaults() {
 	if Config.Redis.Port == 0 {
 		Config.Redis.Port = 6379
 	}
+	// 门面服务账号缺省(绑 IGN-ROLE-05;路径类配置刻意不给缺省 —— 未配置即执行位不可用,R-15)
+	if Config.Delivery.FacadeUser == "" {
+		Config.Delivery.FacadeUser = "ignition-agent"
+	}
 	// 指标默认开启(yaml 显式 false 或 env METRICS_ENABLED=false 关闭)
 	Config.Metrics.Enabled = true
 	if Config.Auth.Mode == "" {
@@ -266,6 +283,25 @@ func applyEnvOverrides() {
 	}
 	if v := os.Getenv("CENTER_CODE"); v != "" {
 		Config.CenterCode = v
+	}
+	// 本机执行位与交付门面(v1.1;挂载三件 + 服务身份令牌)。路径/令牌只经配置或 env 注入。
+	if v := os.Getenv("IGN_DELIVERY_TOOL_BIN"); v != "" {
+		Config.Delivery.ToolBin = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_TOOL_ROOT"); v != "" {
+		Config.Delivery.ToolRoot = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_WORK_DIR"); v != "" {
+		Config.Delivery.WorkDir = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_FACADE_TOKEN"); v != "" {
+		Config.Delivery.FacadeToken = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_FACADE_USER"); v != "" {
+		Config.Delivery.FacadeUser = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_SSH_DIR"); v != "" {
+		Config.Delivery.SSHDir = v
 	}
 	if v := os.Getenv("USER_AUTH_MODE"); v != "" {
 		Config.UserAuth.Mode = v

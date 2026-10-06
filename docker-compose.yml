@@ -1,16 +1,20 @@
-# 应用栈：techbase 后端 + 前端（nginx）—— 接入 step1 生产基础设施
+# 应用栈：点火中心（ignition-center，O-IGN）后端 + 前端（nginx）—— 接入 step1 生产基础设施
 #
 # 重构口径（2026-10-02）：不再自起 gateway/postgres/redis，全部接入 opic-ai 生产环境
 # （192.168.3.200，*.opic-ai.ccoe.tech，见 opic-deploy 仓与 118 号生产部署方案）：
-#   - Traefik    统一入口（opic-net 外部网络，本栈只声明 labels，子域 techbase.opic-ai.ccoe.tech）
-#   - PostgreSQL Pigsty 集群 haproxy :5433（库 opicdb，schema otechbase —— OPIC-DB-SCHEMA-01）
+#   - Traefik    统一入口（opic-net 外部网络，本栈只声明 labels，子域 ign.opic-ai.ccoe.tech）
+#   - PostgreSQL Pigsty 集群 haproxy :5433（库 opicdb，schema ign —— OPIC-DB-SCHEMA-01）
 #   - Redis      opic-redis（opic-net 内 :6379）
 #   - NATS       opic-nats（opic-net 内 :4222，EVENTBUS_DRIVER=nats 时）
 #   - Temporal   opic-temporal（opic-net 内 :7233，WORKFLOW_DRIVER=temporal 时）
 #   - Harbor     镜像来源（make harbor-push 推送 192.168.3.200:18700）
 #
+# 执行位口径（裁定 Q-68）：本中心后端容器自身即执行机 —— 命令面可执行文件与 kubeasz 目录由宿主挂载；
+# 未挂载 ⇒ 执行位不可用并按 R-15 显式降级（不静默置灰）。SSH 私钥只透传路径、内容零出口，
+# 需要时由部署侧自行追加挂载（见下方 volumes 注释）。
+#
 # 本地开发：configs/config.yml 默认即指生产；纯离线自足栈见 docker-compose.infra.yml（dev only）。
-name: opic-techbase
+name: opic-ign
 
 networks:
   opic-net:
@@ -18,9 +22,9 @@ networks:
     name: ${DOCKER_NETWORK:-opic-net}
 
 services:
-  techbase:
-    image: ${IMAGE_PREFIX:-192.168.3.200:18700/opic/techbase}:${IMAGE_TAG:-latest}
-    container_name: opic-techbase-app
+  ign:
+    image: ${IMAGE_PREFIX:-192.168.3.200:18700/opic/ign}:${IMAGE_TAG:-latest}
+    container_name: opic-ign-app
     restart: always
     depends_on: []   # 数据面(opic-pg/redis/nats/temporal)由 step1 部署工程先行拉起
     environment:
@@ -32,7 +36,7 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-${PG_ADMIN_PASSWORD:?PG_ADMIN_PASSWORD 未配置}}
       DB_NAME: ${DB_NAME:-opicdb}
-      DB_SCHEMA: ${DB_SCHEMA:-otechbase}
+      DB_SCHEMA: ${DB_SCHEMA:-ign}
       DB_SSLMODE: disable
       # ── Redis / 事件总线 / 工作流（容器网直连）──
       REDIS_ENABLED: ${REDIS_ENABLED:-true}
@@ -43,13 +47,21 @@ services:
       EVENTBUS_URL: ${EVENTBUS_URL:-nats://opic-nats:4222}
       EVENTBUS_USERNAME: ${EVENTBUS_USERNAME:-opic}
       EVENTBUS_PASSWORD: ${EVENTBUS_PASSWORD:-${NATS_PASSWORD:?NATS_PASSWORD 未配置}}
-      CENTER_CODE: ${CENTER_CODE:-techbase}
-      NATS_STREAM: ${NATS_STREAM:-}
-      NATS_SUBJECT_PREFIX: ${NATS_SUBJECT_PREFIX:-}
+      CENTER_CODE: ${CENTER_CODE:-ign}
+      NATS_STREAM: ${NATS_STREAM:-ign}
+      NATS_SUBJECT_PREFIX: ${NATS_SUBJECT_PREFIX:-opic.ign.}
       WORKFLOW_DRIVER: ${WORKFLOW_DRIVER:-temporal}
       WORKFLOW_ADDRESS: ${WORKFLOW_ADDRESS:-temporal:7233}
       WORKFLOW_NAMESPACE: ${WORKFLOW_NAMESPACE:-opic}
-      WORKFLOW_TASK_QUEUE: ${WORKFLOW_TASK_QUEUE:-}
+      WORKFLOW_TASK_QUEUE: ${WORKFLOW_TASK_QUEUE:-ign}
+      # ── 交付执行内核（v1.1 kubeasz 集成：命令面 + 工作目录 + 门面令牌）──
+      # 真实取值只出现在此处与生产 .env，不进代码常量/字典/界面
+      IGN_DELIVERY_TOOL_BIN: ${IGN_DELIVERY_TOOL_BIN:-/opt/opic/delivery/bin/ezctl}
+      IGN_DELIVERY_TOOL_ROOT: ${IGN_DELIVERY_TOOL_ROOT:-/etc/kubeasz}
+      IGN_DELIVERY_WORK_DIR: ${IGN_DELIVERY_WORK_DIR:-}
+      IGN_DELIVERY_SSH_DIR: ${IGN_DELIVERY_SSH_DIR:-/opt/opic/ssh}
+      IGN_DELIVERY_FACADE_TOKEN: ${IGN_DELIVERY_FACADE_TOKEN:-}
+      IGN_DELIVERY_FACADE_USER: ${IGN_DELIVERY_FACADE_USER:-ignition-agent}
       # ── 用户工作台 SSO（OPIC-SSO-01：Casdoor）──
       USER_AUTH_MODE: ${USER_AUTH_MODE:-local}
       USER_AUTH_AUTO_PROVISION: ${USER_AUTH_AUTO_PROVISION:-false}
@@ -74,11 +86,16 @@ services:
       # IdP/自站域名 → 宿主网关(容器侧 OIDC 发现/换码走 Traefik TLS)
       - "auth.opic-ai.ccoe.tech:${AUTH_HOST_IP:-host-gateway}"
       - "casdoor.opic-ai.ccoe.tech:${AUTH_HOST_IP:-host-gateway}"
-      - "techbase.opic-ai.ccoe.tech:${AUTH_HOST_IP:-host-gateway}"
+      - "ign.opic-ai.ccoe.tech:${AUTH_HOST_IP:-host-gateway}"
     volumes:
       # 自建 CA 公钥(step1 gen-certs.sh 签发 *.opic-ai.ccoe.tech,公钥可入库);
       # 容器内 OIDC 发现/换码经宿主网关 Traefik TLS 时须信任此 CA
       - ./configs/ca.crt:/etc/ssl/certs/opic-ca.crt:ro
+      # 命令面可执行文件与 kubeasz 目录由宿主挂载(后端容器即执行机,裁定 Q-68)
+      - ${DELIVERY_HOST_DIR:-/opt/opic/delivery}:/opt/opic/delivery
+      - ${KUBEASZ_HOST_DIR:-/etc/kubeasz}:${IGN_DELIVERY_TOOL_ROOT:-/etc/kubeasz}
+      # 执行面 SSH 私钥:内容零出口,仅在部署侧显式配置该挂载时才可达(默认空 ⇒ 不挂载)
+      - ${IGN_SSH_HOST_DIR:-/opt/opic/ssh}:${IGN_DELIVERY_SSH_DIR:-/opt/opic/ssh}:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9680/health/live >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -88,30 +105,30 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=${DOCKER_NETWORK:-opic-net}
-      - opic.stack=techbase
+      - opic.stack=ign
       # 子域路由（TLS 入口由 step1 Traefik 的 websecure 承载；/api|/health|/metrics → 后端）
-      - traefik.http.routers.techbase-api.rule=Host(`techbase.${BASE_DOMAIN:?BASE_DOMAIN 未配置}`) && (PathPrefix(`/api`) || PathPrefix(`/health`) || Path(`/metrics`))
-      - traefik.http.routers.techbase-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.techbase-api.priority=100
-      - traefik.http.routers.techbase-api.service=techbase-api
-      - traefik.http.services.techbase-api.loadbalancer.server.port=9680
+      - traefik.http.routers.ign-api.rule=Host(`ign.${BASE_DOMAIN:?BASE_DOMAIN 未配置}`) && (PathPrefix(`/api`) || PathPrefix(`/health`) || Path(`/metrics`))
+      - traefik.http.routers.ign-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.ign-api.priority=100
+      - traefik.http.routers.ign-api.service=ign-api
+      - traefik.http.services.ign-api.loadbalancer.server.port=9680
     networks: [opic-net]
 
   frontend:
-    image: ${IMAGE_PREFIX:-192.168.3.200:18700/opic/techbase-frontend}:${IMAGE_TAG:-latest}
-    container_name: opic-techbase-frontend
+    image: ${IMAGE_PREFIX:-192.168.3.200:18700/opic/ign-frontend}:${IMAGE_TAG:-latest}
+    container_name: opic-ign-frontend
     restart: always
     depends_on:
-      - techbase
+      - ign
     labels:
       - traefik.enable=true
       - traefik.docker.network=${DOCKER_NETWORK:-opic-net}
-      - opic.stack=techbase
+      - opic.stack=ign
       # ⚠ Traefik 的 service 只指向 label 所在容器（step1 实测坑③）：
-      # web 路由必须挂 frontend 容器；/api|/health|/metrics 由 techbase 容器的 api 路由（priority 100）承接
-      - traefik.http.routers.techbase-web.rule=Host(`techbase.${BASE_DOMAIN}`)
-      - traefik.http.routers.techbase-web.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.techbase-web.priority=1
-      - traefik.http.routers.techbase-web.service=techbase-web
-      - traefik.http.services.techbase-web.loadbalancer.server.port=80
+      # web 路由必须挂 frontend 容器；/api|/health|/metrics 由 ign 容器的 api 路由（priority 100）承接
+      - traefik.http.routers.ign-web.rule=Host(`ign.${BASE_DOMAIN}`)
+      - traefik.http.routers.ign-web.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.ign-web.priority=1
+      - traefik.http.routers.ign-web.service=ign-web
+      - traefik.http.services.ign-web.loadbalancer.server.port=80
     networks: [opic-net]

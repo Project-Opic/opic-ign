@@ -1,5 +1,5 @@
 model_type: REPORT
-version: '1.0'
+version: '1.1'
 domain: 交付执行域
 query_reports:
 - id: REP-01
@@ -557,11 +557,11 @@ query_reports:
   name: 任务台账
   alias: rep09
   objectType: LIST_QUERY
-  description: ''
+  description: 列表（规格 5.10）。v1.1 起同一张台账承载两条来源：人工提交与交付门面受理，只差来源列与步骤编码列——不另建第二份任务事实。
   behaviorRef: FUNC-25
   sourceObjects:
-  - objectRef: EXT-EXTERNAL
-    alias: external
+  - objectRef: AGG-IGN-06
+    alias: exectask
     primary: true
     sourceNote: 列表
   joins: []
@@ -573,11 +573,25 @@ query_reports:
     allowedOperators:
     - EQ
     sourceField: ''
+  - name: p2
+    label: 来源任务标识（v1.1）
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ExecTask.sourceTaskNo
   conditions:
   - conditionId: C01
     leftExpression: 执行机 / 动作 / 集群 / 状态 / 时间
     operator: EQ
     parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  - conditionId: C02
+    leftExpression: ExecTask.sourceTaskNo
+    operator: EQ
+    parameterRef: p2
     logicalConnector: AND
     group: BASE
     skipWhenParameterEmpty: true
@@ -595,30 +609,54 @@ query_reports:
     aggregateFunction: NONE
     sortable: true
   - name: c3
+    label: 步骤编码（v1.1，仅 ezctl.setup 有值）
+    dataType: String
+    sourceExpression: ExecTask.stepCode
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
     label: 执行机
     dataType: String
     sourceExpression: ''
     aggregateFunction: NONE
     sortable: true
-  - name: c4
+  - name: c5
     label: 关联集群
     dataType: String
     sourceExpression: ''
     aggregateFunction: NONE
     sortable: true
-  - name: c5
-    label: 状态 + 可信来源标注
+  - name: c6
+    label: 来源任务标识 + 来源步骤序号（v1.1，非空即由门面受理）
+    dataType: String
+    sourceExpression: ExecTask.sourceTaskNo + ExecTask.sourceStepIndex
+    aggregateFunction: NONE
+    sortable: true
+  - name: c7
+    label: 状态
     dataType: String
     sourceExpression: ''
     aggregateFunction: NONE
     sortable: true
-  - name: c6
+  - name: c8
+    label: 结论依据（v1.1）
+    dataType: String
+    sourceExpression: ExecTask.verdictSource
+    aggregateFunction: NONE
+    sortable: true
+  - name: c9
+    label: 对账注记（v1.1，是否被修正过）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c10
     label: 退出码 / 失败原因
     dataType: String
     sourceExpression: ''
     aggregateFunction: NONE
     sortable: true
-  - name: c7
+  - name: c11
     label: 起止时间
     dataType: String
     sourceExpression: ''
@@ -632,61 +670,165 @@ query_reports:
     defaultPageSize: 20
     maxPageSize: 100
   reportOptions: null
-  version: '1.0'
+  version: '1.1'
+  caliberNote: 口径注记（v1.1）：FAILED / CANCELLED / LOST 三态分列，LOST 一律不并入失败（并列就等于把"不知道"说成"做坏了"）；LOST 行的退出码位为空（INV-37）；状态 + 结论依据 + 对账注记三件同现即口径 7「状态可信来源标注」在台账层的落点；来源列只读、无输入位（INV-34）
 - id: REP-10
   name: 任务详情
   alias: rep10
-  objectType: STATISTICS
-  description: ''
+  objectType: DETAIL_QUERY
+  description: 明细（规格 5.11）。分区呈现：提交信息 ｜ 动作与参数 ｜ 执行结果 ｜ 对账注记 ｜ 日志游标右界与行数（v1.1 末区）。
   behaviorRef: FUNC-26
   sourceObjects:
-  - objectRef: AGG-IGN-02
-    alias: imageprepushitem
+  - objectRef: AGG-IGN-06
+    alias: exectask
     primary: true
   joins: []
-  parameters: []
-  conditions: []
+  parameters:
+  - name: p1
+    label: 任务编号
+    dataType: String
+    required: true
+    allowedOperators:
+    - EQ
+    sourceField: ExecTask.taskNo
+  conditions:
+  - conditionId: C01
+    leftExpression: ExecTask.taskNo
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
   resultColumns:
   - name: c1
-    label: 提交信息 ｜ 动作与参数（环境变量值脱敏）｜ 执行结果（退出码 + 来源标注）｜ 对账注记（是否被修正过）
+    label: 提交信息（含来源标识与提交身份，v1.1）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c2
+    label: 动作与参数（环境变量值脱敏）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c3
+    label: 执行结果（退出码 + 结论依据 + 结论摘要，v1.1）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c4
+    label: 对账注记（是否被修正过）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c5
+    label: 日志游标右界与行数（v1.1）
+    dataType: String
+    sourceExpression: TaskLogLine 聚合派生
+    aggregateFunction: COUNT
+    sortable: false
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: false
+    defaultPageSize: 0
+    maxPageSize: 0
+  reportOptions: null
+  version: '1.1'
+  caliberNote: 口径注记（v1.1）：被对账修正过的任务必须显示修正痕迹（例外路径可审计，R-09 的界面落点）；LOST 任务显示「痕迹不可存活」原因、退出码位为空（INV-37）；环境变量值不出现在任何界面与接口回显（Q-22）；来源标识与提交身份只读、非空即由门面受理（INV-34）
+- id: REP-11
+  name: 任务日志视图
+  alias: rep11
+  objectType: DETAIL_QUERY
+  description: 流式明细（规格 5.12）。v1.1 起数据源是本域的子实体数据行 TaskLogLine（表 ign_task_log）——界面与门面回吐读的是同一份已脱敏存储，不存在第二份日志副本。
+  behaviorRef: FUNC-27
+  sourceObjects:
+  - objectRef: AGG-IGN-06
+    alias: exectask
+    primary: true
+    sourceNote: 明细（流式）；数据源为任务聚合内子实体任务日志行（表 ign_task_log），按行游标升序
+  joins: []
+  parameters:
+  - name: p1
+    label: 任务编号
+    dataType: String
+    required: true
+    allowedOperators:
+    - EQ
+    sourceField: ExecTask.taskNo
+  - name: p2
+    label: 游标起点（增量续传，缺省最近 500 行）
+    dataType: Integer
+    required: false
+    allowedOperators:
+    - GT
+    sourceField: TaskLogLine.seq
+  conditions:
+  - conditionId: C01
+    leftExpression: ExecTask.taskNo
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+  - conditionId: C02
+    leftExpression: TaskLogLine.seq
+    operator: GT
+    parameterRef: p2
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 行游标
     dataType: String
     sourceExpression: ''
     aggregateFunction: NONE
     sortable: true
+  - name: c2
+    label: 时间
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 流向（v1.1 含「工具输出」）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 日志行（已脱敏内容）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c5
+    label: 已脱敏标记（v1.1）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c6
+    label: 结束事件（含 exit / 判定依据 / 完整性注记）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
   groupBy: []
   having: []
-  orderBy: []
+  orderBy:
+  - expression: TaskLogLine.seq
+    direction: ASC
   pagination:
     enabled: true
-    defaultPageSize: 20
-    maxPageSize: 100
+    defaultPageSize: 500
+    maxPageSize: 2000
   reportOptions: null
-  version: '1.0'
-  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件（紧凑家族只给「内容要点」结果列口径）；绑定屏 frmIgnLog 的 9.x 原型亦无工具栏筛选控件 → 参数待建模阶段补齐
-- id: REP-11
-  name: 任务日志视图
-  alias: rep11
-  objectType: STATISTICS
-  description: ''
-  behaviorRef: FUNC-27
-  sourceObjects:
-  - objectRef: AGG-IGN-02
-    alias: imageprepushitem
-    primary: true
-  joins: []
-  parameters: []
-  conditions: []
-  resultColumns: []
-  groupBy: []
-  having: []
-  orderBy: []
-  pagination:
-    enabled: true
-    defaultPageSize: 20
-    maxPageSize: 100
-  reportOptions: null
-  version: '1.0'
-  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件（紧凑家族只给「内容要点」结果列口径）；绑定屏 frmIgnLog 的 9.x 原型亦无工具栏筛选控件 → 参数待建模阶段补齐
+  version: '1.1'
+  caliberNote: 口径注记（v1.1）：中继断线的任务显示「日志不完整」及原因（口径 2）；游标空洞显式标注为「少了几行」而非乱序（INV-38）；已脱敏行标出掩码事实（R-16 的审计可见性）；不提供导出（口径 5）；界面与 FUNC-35 门面回读同源同脱敏（INV-40）
 - id: REP-12
   name: 对账与纠偏台账
   alias: rep12
@@ -758,18 +900,184 @@ query_reports:
 - id: REP-13
   name: 统计总览
   alias: rep13
-  objectType: STATISTICS
-  description: ''
+  objectType: STATISTICAL_QUERY
+  description: 固定统计报表（规格 5.14）。八块统计：版本状态分布 ｜ 预推完成度 ｜ 执行机治理分布 ｜ 健康快照（观测类）｜ 任务成败计数 ｜ 门面受理量与结论依据分布（v1.1）｜ 拒绝审计计数 ｜ 纠偏计数。
   behaviorRef: FUNC-29
   sourceObjects:
-  - objectRef: EXT-EXTERNAL
-    alias: external
+  - objectRef: AGG-IGN-06
+    alias: exectask
     primary: true
-    sourceNote: 固定统计报表
+    sourceNote: 固定统计报表；跨聚合读时聚合，不新建物化视图
   joins: []
   parameters: []
   conditions: []
-  resultColumns: []
+  resultColumns:
+  - name: c1
+    label: 版本状态分布（台账事实）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: COUNT
+    sortable: false
+  - name: c2
+    label: 预推完成度（台账事实）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: COUNT
+    sortable: false
+  - name: c3
+    label: 执行机治理分布（台账事实）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: COUNT
+    sortable: false
+  - name: c4
+    label: 健康快照（观测类，带扫描时间）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c5
+    label: 任务成败计数（FAILED / CANCELLED / LOST 三列分列，v1.1）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: COUNT
+    sortable: false
+  - name: c6
+    label: 门面受理量与结论依据分布（v1.1）
+    dataType: String
+    sourceExpression: ExecTask.sourceTaskNo 非空计数 + verdictSource 分组
+    aggregateFunction: COUNT
+    sortable: false
+  - name: c7
+    label: 执行位可用（观测类，v1.1）
+    dataType: String
+    sourceExpression: 命令面挂载与可执行探测
+    aggregateFunction: NONE
+    sortable: false
+  - name: c8
+    label: 拒绝审计计数（台账事实）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: COUNT
+    sortable: false
+  - name: c9
+    label: 纠偏计数（审计事实）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: COUNT
+    sortable: false
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: false
+    defaultPageSize: 0
+    maxPageSize: 0
+  reportOptions: null
+  version: '1.1'
+  caliberNote: 口径注记（v1.1）：计数类与观测类视觉可分、观测卡各带扫描时间（口径 7）；LOST 独立成块、不并入失败（B-CONF-13 的报表落点）；门面受理量与人工提交量分列（INV-34 来源列即分列依据）；执行位可用属 R-15 的观测侧、不是台账
+- id: REP-14
+  name: 门面受理台账
+  alias: rep14
+  objectType: LIST_QUERY
+  description: 列表（规格 5.15，v1.1 新增）。固定过滤「来源任务标识非空」——回答"上游这次交付的这一步由谁受理、执行了几次、结论凭什么"；与 REP-09 共用同一 ExecTask 查询面，只差固定过滤与列集。
+  behaviorRef: FUNC-37
+  sourceObjects:
+  - objectRef: AGG-IGN-06
+    alias: exectask
+    primary: true
+    sourceNote: 列表；固定过滤 sourceTaskNo 非空
+  joins: []
+  parameters:
+  - name: p1
+    label: 来源任务标识 / 来源步骤序号 / 集群标识
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  - name: p2
+    label: 结论依据 / 状态 / 时间
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C00
+    leftExpression: ExecTask.sourceTaskNo
+    operator: IS_NOT_NULL
+    logicalConnector: AND
+    group: FIXED
+  - conditionId: C01
+    leftExpression: 来源任务标识 / 来源步骤序号 / 集群标识
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  - conditionId: C02
+    leftExpression: 结论依据 / 状态 / 时间
+    operator: EQ
+    parameterRef: p2
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 本域任务编号
+    dataType: String
+    sourceExpression: ExecTask.taskNo
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 来源任务标识 + 来源步骤序号
+    dataType: String
+    sourceExpression: ExecTask.sourceTaskNo + ExecTask.sourceStepIndex
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 动作
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 步骤编码
+    dataType: String
+    sourceExpression: ExecTask.stepCode
+    aggregateFunction: NONE
+    sortable: true
+  - name: c5
+    label: 状态
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 结论依据
+    dataType: String
+    sourceExpression: ExecTask.verdictSource
+    aggregateFunction: NONE
+    sortable: true
+  - name: c7
+    label: 日志行数与游标右界
+    dataType: String
+    sourceExpression: TaskLogLine 聚合派生
+    aggregateFunction: COUNT
+    sortable: false
+  - name: c8
+    label: 受理时间
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  - name: c9
+    label: 结束时间
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
   groupBy: []
   having: []
   orderBy: []
@@ -778,5 +1086,5 @@ query_reports:
     defaultPageSize: 20
     maxPageSize: 100
   reportOptions: null
-  version: '1.0'
-  parameterSpecNote: 规格 5.x 未列该报表的输入查询条件（紧凑家族只给「内容要点」结果列口径）；绑定屏 frmIgnOps 的 9.x 原型亦无工具栏筛选控件 → 参数待建模阶段补齐
+  version: '1.1'
+  caliberNote: 口径注记（v1.1）：幂等复用与新任务在此可见（同一来源任务 + 序号只对一个 taskNo，INV-35）；不复制第二份事实、不建新存储（与 REP-09 同一查询面）；只暴露跨域标识与结论依据，不含参数与命令面，故四个界面角色全可读（敏感级低于纠偏页签）；FUNC-35 的门面回读是机器对机器的读接口、显式登记为不出报表

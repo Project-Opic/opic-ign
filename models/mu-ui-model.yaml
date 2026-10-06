@@ -1,5 +1,5 @@
 model_type: UI
-version: '1.0'
+version: '1.1'
 domain: 交付执行域
 application:
   name: OPIC-交付执行域
@@ -451,6 +451,7 @@ screens:
     required: true
     dataBinding: Executor 筛选
     role: QUERY
+    valueNote: v1.1 只列「就绪 + 未超载 + 健康」项，LOCAL 执行位置顶；TOOL_UNAVAILABLE 时在下方原因位给出「本机执行位不可用：命令面挂载缺失」，不静默置灰（R-15）
   - id: el02
     type: SELECT
     label: 执行动作
@@ -458,24 +459,28 @@ screens:
     required: true
     dataBinding: ''
     role: QUERY
+    valueNote: 字典 IGN_ACTION（白名单，INV-28 / R-12）
   - id: el03
-    type: TEXT
+    type: TEXTBOX
     label: 动作参数
-    io: O
+    io: I
     required: true
-    dataBinding: ''
+    dataBinding: ExecTask.args
+    valueNote: 结构化独立 argv、无 shell 解释；人工路径保留输入位，门面路径无此位（R-13 派生）
   - id: el04
-    type: TEXT
+    type: REF_SELECT
     label: 关联集群
-    io: O
+    io: I
     required: true
-    dataBinding: ''
+    dataBinding: ExecTask.clusterRef
+    valueNote: 跨域引用 O-CLC（INV-33），跳选框
   - id: el05
-    type: TEXT
+    type: NUMBER
     label: 超时秒数
-    io: O
+    io: I
     required: true
-    dataBinding: ''
+    dataBinding: ExecTask.timeoutSeconds
+    valueNote: 缺省取平台配置（REF-02）
   - id: el06
     type: BUTTON
     label: 提交（按钮）
@@ -496,10 +501,33 @@ screens:
     dataBinding: ExecTask.env
   - id: el09
     type: TEXT
-    label: 状态（含来源）
+    label: 状态 + 结论依据 + 对账注记（v1.1 三件同现）
     io: O
     required: false
     dataBinding: ExecTask
+    valueNote: LOST 用「痕迹不可存活」中性色且退出码位为空（INV-37）；经对账修正的任务显示修正痕迹（口径 7）
+  - id: el10
+    type: SELECT
+    label: 步骤编码（v1.1）
+    io: I
+    required: false
+    dataBinding: ExecTask.stepCode
+    valueNote: 条件必填——仅 ezctl.setup 可见且必填，取字典 IGN_INSTALL_STEP（01~07，INV-36）；其余动作隐藏并置空
+  - id: el11
+    type: TEXT
+    label: 来源任务标识 + 来源步骤序号（v1.1）
+    io: O
+    required: false
+    dataBinding: ExecTask.sourceTaskNo / sourceStepIndex
+    valueNote: 只读列、无输入位（INV-34）；非空即「由门面受理」，点击进入门面受理台账反查（FUNC-37）
+  - id: el12
+    type: GRID
+    label: 从表｜任务日志行（v1.1，只读）
+    io: O
+    required: false
+    dataBinding: ExecTask.logs
+    dataSource: REP-11
+    valueNote: 行游标 / 时间 / 流向（含工具输出）/ 内容 / 已脱敏标记；游标空洞显式标注（INV-38）；按游标增量拉取、不提供导出（口径 5）
   actions:
   - actionId: act-FUNC-23
     name: 提交执行任务
@@ -542,6 +570,7 @@ screens:
     io: O
     required: false
     dataBinding: 日志通道
+    valueNote: v1.1 改绑子实体 TaskLogLine.logLine（本域唯一的日志存储，界面与门面回读同源同脱敏，INV-40）
   - id: el05
     type: TAB
     label: 对账与纠偏（页签）
@@ -550,10 +579,33 @@ screens:
     dataBinding: 纠偏记录
   - id: el06
     type: TEXT
-    label: 状态来源标注
+    label: 状态 + 结论依据 + 对账修正（v1.1 三件同现）
     io: O
     required: false
     dataBinding: ExecTask
+    valueNote: 结论依据取 IGN_VERDICT_SOURCE（退出码 / 剧本汇总 / 代理回执 / 无法验真）；LOST 落「痕迹不可存活」且退出码位为空（INV-37）
+  - id: el07
+    type: TEXT
+    label: 行游标（v1.1）
+    io: O
+    required: false
+    dataBinding: TaskLogLine.seq
+    valueNote: 单调递增、空洞显式标注为「少了几行」（INV-38）；与主表「游标右界」列同坐标——上游回读用的与界面看到的是同一个
+  - id: el08
+    type: TEXT
+    label: 已脱敏标记（v1.1）
+    io: O
+    required: false
+    dataBinding: TaskLogLine.masked
+    valueNote: 命中掩码规则被改写的行标出「日志被动过」，而非静默替换（R-16）
+  - id: el09
+    type: TAB
+    label: 门面受理台账（页签，v1.1）
+    io: O
+    required: false
+    dataBinding: ExecTask（固定过滤来源任务标识非空）
+    dataSource: REP-14
+    valueNote: 来源任务标识 + 来源步骤序号 / 结论依据 / 日志行数与游标右界；对四个界面角色开放（不含参数与命令面，敏感级低于纠偏页签）；默认「来源非空 + 最近 7 天」
   actions:
   - actionId: act-FUNC-25
     name: 任务台账查询
@@ -579,6 +631,12 @@ screens:
     behaviorRef: FUNC-28
     permissionRef:
     - PERM-FUNC-28
+  - actionId: act-FUNC-37
+    name: 门面受理台账查询
+    actionType: QUERY
+    behaviorRef: FUNC-37
+    permissionRef:
+    - PERM-FUNC-37
 - screenId: frmIgnOps
   name: 统计与参数
   screenType: QUERY_LIST
@@ -621,29 +679,81 @@ screens:
     required: false
     dataBinding: 纠偏记录
   - id: el07
-    type: TEXT
+    type: TEXTBOX
     label: 任务默认超时（秒）
-    io: O
+    io: I
     required: false
     dataBinding: O-SYS 配置
+    valueNote: REF-02
   - id: el08
-    type: TEXT
+    type: TEXTBOX
     label: 心跳超时阈值（秒）
-    io: O
+    io: I
     required: false
     dataBinding: 同左
+    valueNote: REF-03
   - id: el09
-    type: TEXT
+    type: TEXTBOX
     label: 引导令牌有效期（秒）
-    io: O
+    io: I
     required: false
     dataBinding: 同左
+    valueNote: REF-01
   - id: el10
     type: BUTTON
     label: 保存运行参数（按钮）
     io: I
     required: false
     dataBinding: ''
+  - id: el11
+    type: TEXT
+    label: 门面受理 7 日（v1.1）
+    io: O
+    required: false
+    dataBinding: ExecTask 聚合
+    valueNote: 来源任务标识非空的任务数，与人工提交量分列（台账事实块）
+  - id: el12
+    type: TEXT
+    label: 痕迹不可存活 LOST（v1.1）
+    io: O
+    required: false
+    dataBinding: ExecTask 聚合
+    valueNote: 独立成卡、不并入失败计数（INV-37；与任务成败计数卡视觉分列）
+  - id: el13
+    type: TEXT
+    label: 执行位可用（v1.1）
+    io: O
+    required: false
+    dataBinding: 系统探测（非台账）
+    valueNote: 命令面挂载与可执行文件探测结果 + 扫描时间（R-15 的观测侧）；不可用时显示原因，不只置灰
+  - id: el14
+    type: TEXTBOX
+    label: 回执单次回吐行数（v1.1）
+    io: I
+    required: false
+    dataBinding: 同左
+    valueNote: REF-14
+  - id: el15
+    type: TEXTBOX
+    label: 终止宽限（秒）（v1.1）
+    io: I
+    required: false
+    dataBinding: 同左
+    valueNote: REF-15；进程组终止链的 SIGTERM→SIGKILL 宽限
+  - id: el16
+    type: TEXTBOX
+    label: 日志保留天数（v1.1）
+    io: I
+    required: false
+    dataBinding: 同左
+    valueNote: REF-16；清理由系统执行，界面不提供手工清理位
+  - id: el17
+    type: TEXT
+    label: 执行位命令面挂载路径（v1.1）
+    io: O
+    required: false
+    dataBinding: 部署配置
+    valueNote: 只读显示——不在可维护参数内（§1.6.1：部署配置值、运行期不可改）；改它走部署、不走界面
   actions:
   - actionId: act-FUNC-29
     name: 统计总览查询

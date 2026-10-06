@@ -1,5 +1,5 @@
 model_type: RULE
-version: '1.0'
+version: '1.1'
 domain: 交付执行域
 rules:
 - id: REF-01
@@ -283,26 +283,26 @@ rules:
   reusedBy: []
   version: '1.0'
 - id: INV-29
-  name: RUNNING / CANCELLING 必须有开始时间且无结束时间；三个终态必
+  name: RUNNING / CANCELLING 与四个终态的时间与结论字段互斥
   ruleType: INVARIANT
-  description: 执行任务：RUNNING / CANCELLING 必须有开始时间且无结束时间；三个终态必须有结束时间与退出码或失败原因之一（仅提交时强制校验）
-  expression: ''
+  description: 执行任务：RUNNING / CANCELLING 必须有开始时间且无结束时间；四个终态（COMPLETED / FAILED / CANCELLED / LOST）必须有结束时间与退出码或失败原因之一（仅提交时强制校验）[v1.1：终态由三改四]
+  expression: 
   reusedBy: []
-  version: '1.0'
+  version: '1.1'
 - id: INV-30
-  name: FAILED 与 CANCELLED 分列 —— 失败（执行机判定或平台判定异常
+  name: FAILED / CANCELLED / LOST 三态分列
   ruleType: INVARIANT
-  description: 执行任务：FAILED 与 CANCELLED 分列 —— 失败（执行机判定或平台判定异常）与取消（人为中止）恢复路径不同（仅提交时强制校验）
-  expression: ''
+  description: 执行任务：FAILED / CANCELLED / LOST 三态分列 —— 失败（执行位或平台判定异常）、取消（人为中止）与痕迹不可存活（无法知道结论）恢复路径各不同（仅提交时强制校验）[v1.1：LOST 加入分列]
+  expression: 
   reusedBy: []
-  version: '1.0'
+  version: '1.1'
 - id: INV-31
-  name: 同一执行机上、防重放窗口内的请求令牌摘要至多对应一个任务（重复提交返回原任务；窗
+  name: 请求令牌摘要在防重放窗口内唯一
   ruleType: INVARIANT
-  description: 执行任务：同一执行机上、防重放窗口内的请求令牌摘要至多对应一个任务（重复提交返回原任务；窗口由执行机侧维护 24 小时，本域以摘要唯一性兜底；仅提交时强制校验）
-  expression: ''
+  description: 执行任务：同一执行机上、防重放窗口内的请求令牌摘要至多对应一个任务（重复提交返回原任务；窗口由执行机侧维护 24 小时，本域以摘要唯一性兜底）[v1.1：摘要为空时本条不适用，改由 INV-35 幂等键兜底]（仅提交时强制校验）
+  expression: 
   reusedBy: []
-  version: '1.0'
+  version: '1.1'
 - id: INV-32
   name: 任务记录创建后不可改写（状态对账与崩溃恢复的回填除外、必须留痕）；重试 = 新任
   ruleType: INVARIANT
@@ -401,3 +401,117 @@ rules:
   expression: 白名单与无 shell 治理拒绝：白名单外动作、含拼接风险的提交一律治理拒绝并审计（不是表单校验错误；拒绝记录可查）
   reusedBy: []
   version: '1.0'
+
+# ---- v1.1 增补批（Q-68~Q-72 裁定驱动）：REF-13~16 / INV-34~40 / R-13~17 ----
+- id: REF-13
+  name: 安装步骤参数域由字典给出
+  ruleType: FORMAT
+  description: 执行任务：IGN_INSTALL_STEP（01~07）给出安装类动作的步骤参数合法域，本域不接受域外步骤编码；步骤状态机权威在上游 O-CLC（INV-36）
+  expression: ExecTask.stepCode
+  reusedBy: []
+  version: '1.1'
+- id: REF-14
+  name: 门面单次回吐日志行数上限取平台配置
+  ruleType: FORMAT
+  description: 缺省 500 行 / 次，超出携带续传游标（FUNC-35 增量回吐基准）
+  expression: TaskLogLine.seq
+  reusedBy: []
+  version: '1.1'
+- id: REF-15
+  name: 取消与超时的终止宽限取平台配置
+  ruleType: FORMAT
+  description: 缺省 30 秒（SIGTERM 后再 SIGKILL）
+  expression: B-AUTO-13 进程组终止基准
+  reusedBy: []
+  version: '1.1'
+- id: REF-16
+  name: 任务日志保留天数取平台配置
+  ruleType: FORMAT
+  description: 缺省 14 天；超期行由平台侧清理（无人工清理入口），属数据生命周期而非业务改写
+  expression: TaskLogLine.loggedAt
+  reusedBy: []
+  version: '1.1'
+- id: INV-34
+  name: 门面来源与去处不可混淆
+  ruleType: INVARIANT
+  description: 执行任务：经交付门面受理的任务必须同时具备来源任务标识与来源步骤序号（≥1）；人工提交的任务两者必须为空 —— 来源与去处不可混淆（仅提交时强制校验）
+  expression: 
+  reusedBy: []
+  version: '1.1'
+- id: INV-35
+  name: 门面受理幂等键唯一
+  ruleType: INVARIANT
+  description: 执行任务：同一「来源任务标识 + 来源步骤序号」在本域至多存在一个非终态任务：重复受理返回原任务（幂等，与 INV-31 令牌摘要兜底同族；仅提交时强制校验）
+  expression: 
+  reusedBy: []
+  version: '1.1'
+- id: INV-36
+  name: 步骤编码与执行动作匹配
+  ruleType: INVARIANT
+  description: 执行任务：步骤编码与执行动作必须匹配 —— ezctl.setup 必填且命中 IGN_INSTALL_STEP（01~07），其余动作该列必须为空（保存即校验）
+  expression: 
+  reusedBy: []
+  version: '1.1'
+- id: INV-37
+  name: 终态必须有结论依据
+  ruleType: INVARIANT
+  description: 执行任务：终态任务必须有结论依据；结论为 LOST（执行痕迹不可存活）的任务必须有失败原因且不得有退出码 —— 不可存活的痕迹不能被伪装成退出码非零这类具体结论（仅提交时强制校验）
+  expression: 
+  reusedBy: []
+  version: '1.1'
+- id: INV-38
+  name: 日志行游标单调唯一
+  ruleType: INVARIANT
+  description: 任务日志行：同一任务内行游标唯一且严格单调递增、只增不改；乱序或重复到达的行直接丢弃不入库（不产生空洞、也不回拨已吐出的游标 —— 上游据此判断少了几行而非顺序错乱；保存即校验）
+  expression: 
+  reusedBy: []
+  version: '1.1'
+- id: INV-39
+  name: 日志行不可独立存在
+  ruleType: INVARIANT
+  description: 任务日志行：必须归属一个已存在的任务、不可独立存在；任务进入终态后不再写入新行，例外只有对账与失联判定的平台注记（必须留痕，与 INV-32 同族；仅提交时强制校验）
+  expression: 
+  reusedBy: []
+  version: '1.1'
+- id: INV-40
+  name: 日志写前脱敏无第二条通道
+  ruleType: INVARIANT
+  description: 任务日志行：任何持久化与回吐路径都不得出现未脱敏的凭据串 —— 脱敏发生在落库之前（写前不可逆），门面回吐与界面视图读的是同一份已脱敏数据，不存在第二条未脱敏通道（保存即校验）
+  expression: 
+  reusedBy: []
+  version: '1.1'
+- id: R-13
+  name: 门面受理解析与命令面私有映射
+  ruleType: CROSS_OBJECT
+  description: 请求只携带登记标识（来源任务 / 来源步骤序号 / 集群标识 / 步骤编码 / 节点地址清单）—— 步骤编码命中 01~07 ⇒ 动作固定为安装族单步；命中上游动作类别名 ⇒ 由本域私有映射表取单步动作码；两者都不命中 ⇒ 治理拒绝（与 R-12 同族）。动作码虽在白名单内、但不属交付动作层（内部前置 ezctl.new / 平台运维 scripts.*，可达面见需求文档 7.3）⇒ 同样治理拒绝。映射表内容与命令语义不入模型、不出域（Q-69 裁定 ② + Q-70 裁定 ③）｜写 ExecTask.action / stepCode / args（派生）｜提交即强制
+  expression: 请求只携带登记标识（来源任务 / 来源步骤序号 / 集群标识 / 步骤编码 / 节点地址清单）—— 步骤编码命中 01~07 ⇒ 动作固定为安装族单步；命中上游动作类别名 ⇒ 由本域私有映射表取单步动作码；两者都不命中 ⇒ 治理拒绝（与 R-12 同族）。动作码虽在白名单内、但不属交付动作层（内部前置 ezctl.new / 平台运维 scripts.*，可达面见需求文档 7.3）⇒ 同样治理拒绝。映射表内容与命令语义不入模型、不出域（Q-69 裁定 ② + Q-70 裁定 ③）｜写 ExecTask.action / stepCode / args（派生）｜提交即强制
+  reusedBy: []
+  version: '1.1'
+- id: R-14
+  name: 执行位进程事件驱动执行事实回填
+  ruleType: CROSS_OBJECT
+  description: 逐行输出 ⇒ 日志行批量入库（游标单调、写前脱敏，INV-38 / INV-40）；进程退出 ⇒ 判定网关（剧本汇总行优先于退出码，无汇总时才以退出码为准）写终态与结论依据；取消 / 超时 ⇒ 进程组终止（SIGTERM → REF-15 宽限 → SIGKILL）后置取消中，最终状态仍以事实为准（R-09）｜写 TaskLogLine / ExecTask（终态、verdictSource、exitCode）｜例外触发
+  expression: 逐行输出 ⇒ 日志行批量入库（游标单调、写前脱敏，INV-38 / INV-40）；进程退出 ⇒ 判定网关（剧本汇总行优先于退出码，无汇总时才以退出码为准）写终态与结论依据；取消 / 超时 ⇒ 进程组终止（SIGTERM → REF-15 宽限 → SIGKILL）后置取消中，最终状态仍以事实为准（R-09）｜写 TaskLogLine / ExecTask（终态、verdictSource、exitCode）｜例外触发
+  reusedBy: []
+  version: '1.1'
+- id: R-15
+  name: 本机执行位不可用的降级
+  ruleType: CROSS_OBJECT
+  description: 命令面挂载缺失或不可执行 ⇒ 受理即刻拒绝并记因（TOOL_UNAVAILABLE），LOCAL 执行机健康列置不可用派生结论；绝不静默改走别的执行位、也不静默降级为空任务（与需求文档 1.6.1 只读挂载配套）｜读 Executor（LOCAL 行）；写治理结论 + 对账留痕｜例外触发
+  expression: 命令面挂载缺失或不可执行 ⇒ 受理即刻拒绝并记因（TOOL_UNAVAILABLE），LOCAL 执行机健康列置不可用派生结论；绝不静默改走别的执行位、也不静默降级为空任务（与需求文档 1.6.1 只读挂载配套）｜读 Executor（LOCAL 行）；写治理结论 + 对账留痕｜例外触发
+  reusedBy: []
+  version: '1.1'
+- id: R-16
+  name: 日志写前不可逆脱敏
+  ruleType: CROSS_OBJECT
+  description: 凭据 / 令牌 / 私钥 / 密码形态在落库之前完成掩码改写并置 masked；门面回吐与界面视图读的是同一份已脱敏数据 —— 不存在第二条未脱敏通道｜写 TaskLogLine.logLine / masked｜落库前强制
+  expression: 凭据 / 令牌 / 私钥 / 密码形态在落库之前完成掩码改写并置 masked；门面回吐与界面视图读的是同一份已脱敏数据 —— 不存在第二条未脱敏通道｜写 TaskLogLine.logLine / masked｜落库前强制
+  reusedBy: []
+  version: '1.1'
+- id: R-17
+  name: 同集群在途互斥与额度排队
+  ruleType: CROSS_OBJECT
+  description: 同一关联集群至多一个非终态任务（跨域标识比对、不读集群域表）；集群间并发受 LOCAL 执行机额度约束（R-05 原子计数复用）；互斥不满足时任务照常受理并置 RUNNING（语义为排队中），由上游轮询自然消化 —— 不引入新状态、也不把排队说成失败｜读 ExecTask（同源集群非终态计数）；写 Executor.currentTasksCount｜提交即强制
+  expression: 同一关联集群至多一个非终态任务（跨域标识比对、不读集群域表）；集群间并发受 LOCAL 执行机额度约束（R-05 原子计数复用）；互斥不满足时任务照常受理并置 RUNNING（语义为排队中），由上游轮询自然消化 —— 不引入新状态、也不把排队说成失败｜读 ExecTask（同源集群非终态计数）；写 Executor.currentTasksCount｜提交即强制
+  reusedBy: []
+  version: '1.1'

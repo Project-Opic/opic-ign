@@ -67,6 +67,12 @@ func main() {
 		logger.Fatalf("[致命] 种子数据失败: %v", err)
 	}
 
+	// 本机执行位启动清扫(B-AUTO-14 / INV-37):重启前在途但进程已不存活的 RUNNING/CANCELLING
+	// 任务保守判 LOST(无退出码 + VERDICT_UNRESOLVED),并续派同集群排队任务(R-17)。
+	if err := service.IgnRecoverLocalExec(); err != nil {
+		logger.Warnf("执行痕迹启动清扫失败(LOST 判定未推进,需人工对账): %v", err)
+	}
+
 	// metrics
 	metrics.SetEnabled(config.Config.Metrics.Enabled)
 	// 接真实 DB 连接池统计(GORM→database/sql Stats;对齐 gopherforge 连接池指标)

@@ -41,7 +41,7 @@ eventbus:
   url: nats://192.168.3.200:14222
   username: opic
   password: ""
-  stream_name: "OPIC_IGN"      # 显式声明(留空=按 center_code 派生 OPIC_IGN,两口径一致)
+  stream_name: "ign"           # 平台口径(用户 2026-10-05 裁定):NATS 流 = 中心 3 位小写同名码,与 schema/队列同名
   subject_prefix: "opic.ign."  # 显式声明(infra 自动补 ".>";留空=按 center_code 派生 opic.ign.>)
   max_age_days: 7
 
@@ -80,3 +80,19 @@ ontology:
 # 前端构建产物目录(空则不托管;开发期前端走 vite proxy;compose 走网关/nginx)
 frontend:
   dist_dir: ""
+
+# ── 本机执行位与交付门面(v1.1;需求文档 1.6.1 / 《编制说明》C.3.3)──────────────
+# 三条纪律:① 路径与可执行文件只以本段配置值(或同名 env)存在——不进代码常量、不进字典、
+#    界面只读不可维护;② tool_bin 为空或不可执行 ⇒ 本机执行位不可用 ⇒ 门面受理即刻拒绝并记
+#    TOOL_UNAVAILABLE(R-15),绝不静默改走别的执行位;③ 动作码→argv 的映射是本域私有事实,
+#    门面对上游只暴露动作码与结论。
+# 容器挂载三件:tool_root(只读发行包)/ ssh_dir(宿主免密私钥)/ work_dir(可写 clusters/<标识>/)。
+# env 覆盖名:IGN_DELIVERY_TOOL_BIN / _TOOL_ROOT / _WORK_DIR / _FACADE_TOKEN / _FACADE_USER / _SSH_DIR
+delivery:
+  tool_bin: ""       # 例 /opt/opic/delivery/bin/ezctl(由 apps/<center>/.env 提供)
+  tool_root: ""      # 例 /etc/kubeasz
+  work_dir: ""       # 缺省 = tool_root
+  facade_token: ""   # 上游中心(O-CLC)服务身份令牌;空 ⇒ 门面三接口一律 401
+  facade_user: ignition-agent
+  ssh_dir: ""        # 例 /root/.ssh(内容零出口,只透传路径)
+

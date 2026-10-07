@@ -48,6 +48,9 @@ func SetupRoutes(r *gin.Engine) {
 		facade.POST("/submit", perm("ign:FUNC-34", business.IgnFacadeSubmit)...)
 		facade.GET("/receipt/:ref", perm("ign:FUNC-35", business.IgnFacadeReceipt)...)
 		facade.POST("/cancel/:ref", perm("ign:FUNC-36", business.IgnFacadeCancel)...)
+		// FUNC-50 跨中心交付配置只读通道：调用方同为 ignition 服务令牌（集群中心代理读），
+		// 必须与门面三接口同组——挂进 authed 的 ign 组会让服务令牌解析不到（本文件顶部注释）。
+		facade.GET("/config/:clusterRef", perm("ign:FUNC-50", business.IgnFacadeDeliveryConfig)...)
 	}
 
 	// ---- 登录路由组 ----
@@ -140,6 +143,24 @@ func SetupRoutes(r *gin.Engine) {
 			ign.GET("/stats", perm("ign:FUNC-29", business.IgnStats)...)
 			ign.GET("/params", perm("ign:FUNC-30", business.IgnParamsGet)...)
 			ign.PUT("/params", perm("ign:FUNC-30", business.IgnParamsSave)...)
+
+			// 参数面模板(FUNC-38~44;AGG-IGN-07「参数面模板」屏)
+			ign.GET("/param-template", perm("ign:FUNC-38", business.IgnParamTemplateList)...)
+			ign.POST("/param-template", perm("ign:FUNC-40", business.IgnParamTemplateCreate)...)
+			ign.GET("/param-template/:id", perm("ign:FUNC-39", business.IgnParamTemplateGet)...)
+			ign.PUT("/param-template/:id/items", perm("ign:FUNC-41", business.IgnParamTemplateItemsSave)...)
+			ign.POST("/param-template/:id/enable", perm("ign:FUNC-42", business.IgnParamTemplateEnable)...)
+			ign.POST("/param-template/:id/disable", perm("ign:FUNC-42", business.IgnParamTemplateDisable)...)
+			ign.POST("/param-template/:id/default", perm("ign:FUNC-43", business.IgnParamTemplateSetDefault)...)
+			ign.DELETE("/param-template/:id", perm("ign:FUNC-44", business.IgnParamTemplateDelete)...)
+
+			// 集群交付配置(FUNC-45~49;AGG-IGN-08「集群交付配置」屏)
+			// FUNC-45 原文视图独立权限码(R-26:判据是内容敏感度)——不随 FUNC-46 发牌附带
+			ign.GET("/cluster/raw", perm("ign:FUNC-45", business.IgnClusterRawView)...)
+			ign.GET("/cluster/config", perm("ign:FUNC-46", business.IgnClusterConfigView)...)
+			ign.PUT("/cluster/config/override", perm("ign:FUNC-47", business.IgnClusterConfigOverrideSave)...)
+			ign.POST("/cluster/config/validate", perm("ign:FUNC-48", business.IgnClusterConfigValidate)...)
+			ign.POST("/cluster/config/rollback", perm("ign:FUNC-49", business.IgnClusterConfigRollback)...)
 		}
 
 		// ---- 代理侧端点(IGN-ROLE-05 执行机代理服务身份;登录即可,写审计留痕) ----

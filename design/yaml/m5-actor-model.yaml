@@ -1,5 +1,5 @@
 model_type: ACTOR
-version: '1.1'
+version: '1.3'
 domain: 交付执行域
 actors:
 - actorId: ACTOR-IGN-ROLE-01
@@ -58,6 +58,18 @@ roles:
   - PERM-FUNC-29
   - PERM-FUNC-31
   - PERM-FUNC-37
+  # v1.3：模板内容维护 + 配置覆写全链（设默认不在内 —— 跨集群影响面，见 PERM-FUNC-43）
+  - PERM-FUNC-38
+  - PERM-FUNC-39
+  - PERM-FUNC-40
+  - PERM-FUNC-41
+  - PERM-FUNC-42
+  - PERM-FUNC-44
+  - PERM-FUNC-45
+  - PERM-FUNC-46
+  - PERM-FUNC-47
+  - PERM-FUNC-48
+  - PERM-FUNC-49
 - roleId: IGN-ROLE-02
   name: 平台运维管理员
   permissions:
@@ -77,6 +89,12 @@ roles:
   - PERM-FUNC-32
   - PERM-FUNC-33
   - PERM-FUNC-37
+  # v1.3：模板列表 / 详情按查询放开；设默认是本角色独有（INV-43 的权限侧）；原文视图独立发牌
+  - PERM-FUNC-38
+  - PERM-FUNC-39
+  - PERM-FUNC-43
+  - PERM-FUNC-45
+  - PERM-FUNC-46
 - roleId: IGN-ROLE-03
   name: 交付审计员
   permissions:
@@ -92,6 +110,9 @@ roles:
   - PERM-FUNC-28
   - PERM-FUNC-29
   - PERM-FUNC-37
+  # v1.3：只给模板编目查询；「集群交付配置」两问（FUNC-45 / 46）对其关闭 —— 逐字段视图即完整配置答案（矩阵一第三处最小可见）
+  - PERM-FUNC-38
+  - PERM-FUNC-39
 - roleId: IGN-ROLE-04
   name: 交付只读用户
   permissions:
@@ -106,6 +127,11 @@ roles:
   - PERM-FUNC-27
   - PERM-FUNC-29
   - PERM-FUNC-37
+  # v1.3：审计员零写动作保持成立 —— 新增可用项只有查询四项（含独立发牌的原文视图，R-26）
+  - PERM-FUNC-38
+  - PERM-FUNC-39
+  - PERM-FUNC-45
+  - PERM-FUNC-46
 - roleId: IGN-ROLE-05
   name: 执行机代理
   # v1.1：本角色即矩阵二「05 = 非人工身份」那一格——调用方为执行机代理与下游中心服务身份；
@@ -117,6 +143,8 @@ roles:
   - PERM-FUNC-34
   - PERM-FUNC-35
   - PERM-FUNC-36
+  # v1.3：跨中心交付配置只读通道（服务身份只出、不入 —— 写入口仍在本域「集群交付配置」屏）
+  - PERM-FUNC-50
 
 permissions:
 - permissionId: PERM-FUNC-01
@@ -269,3 +297,58 @@ permissions:
   targetType: BEHAVIOR
   targetRef: FUNC-37
   dataScope: ALL
+- permissionId: PERM-FUNC-38
+  targetType: BEHAVIOR
+  targetRef: FUNC-38
+  dataScope: ALL
+- permissionId: PERM-FUNC-39
+  targetType: BEHAVIOR
+  targetRef: FUNC-39
+  dataScope: ALL
+- permissionId: PERM-FUNC-40
+  targetType: BEHAVIOR
+  targetRef: FUNC-40
+  dataScope: ALL
+- permissionId: PERM-FUNC-41
+  targetType: BEHAVIOR
+  targetRef: FUNC-41
+  dataScope: ALL
+- permissionId: PERM-FUNC-42
+  targetType: BEHAVIOR
+  targetRef: FUNC-42
+  dataScope: ALL
+- permissionId: PERM-FUNC-43
+  targetType: BEHAVIOR
+  targetRef: FUNC-43
+  dataScope: ALL
+  note: 设为默认单独发牌给 IGN-ROLE-02（交付管理员只有列表/详情读权限）—— 影响面是「后续新建集群缺省挂哪张」，跨集群
+- permissionId: PERM-FUNC-44
+  targetType: BEHAVIOR
+  targetRef: FUNC-44
+  dataScope: ALL
+- permissionId: PERM-FUNC-45
+  targetType: BEHAVIOR
+  targetRef: FUNC-45
+  dataScope: ALL
+  note: 清单原文只读视图独立发牌（R-26 / 8.6 第 4 项）：不随 PERM-FUNC-46（字段级配置视图）附带、也不随「查询类默认放开」，落库为 sys_permission.code = ign:FUNC-45；每次读取逐条写审计
+- permissionId: PERM-FUNC-46
+  targetType: BEHAVIOR
+  targetRef: FUNC-46
+  dataScope: ALL
+- permissionId: PERM-FUNC-47
+  targetType: BEHAVIOR
+  targetRef: FUNC-47
+  dataScope: ALL
+- permissionId: PERM-FUNC-48
+  targetType: BEHAVIOR
+  targetRef: FUNC-48
+  dataScope: ALL
+- permissionId: PERM-FUNC-49
+  targetType: BEHAVIOR
+  targetRef: FUNC-49
+  dataScope: ALL
+- permissionId: PERM-FUNC-50
+  targetType: BEHAVIOR
+  targetRef: FUNC-50
+  dataScope: ALL
+  note: 跨中心只读通道：非人工身份（矩阵二「05」那一格，facade token + ign:FUNC-50），与 PERM-FUNC-08 / 19 / 35 同一登记口径；只出不入

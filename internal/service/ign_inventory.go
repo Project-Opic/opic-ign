@@ -68,7 +68,7 @@ func (t ignTopology) IsEmpty() bool {
 }
 
 // ignDeployParams 交付配置渲染面（发行包 hosts/[all:vars] 与 config.yml 的受管键）。
-// 参数面取值两层：部署参数缺省面（REF-17~25）→ 交付版本派生（请求体版本引用命中目录即覆盖组件版本面）；
+// 参数面取值四层（R-20 唯一实现 resolveParamFace）：集群覆写 → 交付版本派生 → 参数面模板 → 平台缺省面；
 // 拓扑面（成员与角色）只来自请求体节点清单（Q-72），两者不同轴、请求体不下发参数模板。
 type ignDeployParams struct {
 	ServiceCIDR    string
@@ -79,7 +79,7 @@ type ignDeployParams struct {
 	ProxyMode      string
 	NodePortRange  string
 	InstallSource  string
-	ImageMirror    string // 内网/本地镜像仓库地址 host[:port]；空 ⇒ 不改写仓库相关键
+	ImageMirror    string // REF-25 单值语义（v1.1.1 兼容位）：多条目时为列表首项
 	SSHUser        string
 	SSHKey         string
 	K8sVersion     string
@@ -88,6 +88,9 @@ type ignDeployParams struct {
 	PauseImage     string // 交付版本镜像清单里的 pause 镜像 repo[:tag]（仓库地址由镜像面拼接）
 	MasterAddrs    []string
 	NodeAddrs      []string
+	// ImageMirrors 内网镜像仓库地址的**整项列表**（R-22：列表型是整体替换，不是逐元素增删）。
+	// 空 ⇒ 不改写仓库相关键（REF-25 明文口径）。落盘形态即 INSECURE_REG 的条目集。
+	ImageMirrors []string
 }
 
 // ignAddrList 组内地址视图（渲染与断言共用，避免两处各自取列）。
@@ -577,10 +580,16 @@ func ignMergeConfigYAML(tpl, clusterRef string, p ignDeployParams) (string, erro
 	case "kube-router":
 		set("kube_router_ver", p.CNIVersion)
 	}
-	if mirror := strings.TrimSpace(p.ImageMirror); mirror != "" {
+	if hosts := p.MirrorHosts(); len(hosts) > 0 {
 		lines = ignSetYAMLScalar(lines, "ENABLE_MIRROR_REGISTRY", "true", -1)
-		host := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(mirror, "http://"), "https://"), "//")
-		lines = ignSetYAMLList(lines, "INSECURE_REG", []string{"http://" + host}, "  ")
+		// R-22 整体替换：INSECURE_REG 的条目集就是台账里那一行的全量值（逐条目加 http:// 前缀，
+		// 与 v1.1.1 的单条目渲染逐字节相同 —— dedupStringsOrdered 保序，排序会让"整项替换"
+		// 的台账行与落盘顺序失去对应关系）
+		reg := make([]string, 0, len(hosts))
+		for _, h := range hosts {
+			reg = append(reg, "http://"+h)
+		}
+		lines = ignSetYAMLList(lines, "INSECURE_REG", dedupStringsOrdered(reg), "  ")
 		if v := strings.TrimSpace(p.SandboxImage()); v != "" {
 			lines = ignSetYAMLScalar(lines, "SANDBOX_IMAGE", v, -1)
 		}
@@ -611,6 +620,21 @@ func dedupStrings(in []string) []string {
 	return out
 }
 
+// dedupStringsOrdered 去重保序（列表型字段的整项替换用：R-22 的对应关系是
+// "台账里的一行 = 落盘后的一项取值"，重排会让 REP-17 的覆写值与 config.yml 的条目顺序对不上）。
+func dedupStringsOrdered(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		if v = strings.TrimSpace(v); v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
+}
+
 // SandboxImage pause 镜像完整坐标（<镜像仓库地址>/<清单登记的 repo:tag>）。
 // 清单未登记 pause ⇒ 不改写，沿用发行包自带值（不猜 tag，猜错就是 06/07 步的 ImagePullBackOff）。
 func (p ignDeployParams) SandboxImage() string {
@@ -636,6 +660,13 @@ type ignManifest struct {
 	DNSDomain   string   `json:"dns_domain"`
 	ImageMirror string   `json:"image_mirror"`
 	Nodes       []string `json:"nodes"`
+	// ImageMirrors 列表型字段的整项快照（R-22：一行台账 = 落盘后的一项取值；
+	// 只存首项会让"下次将生效"与"当前落盘"在多看板间对不上，形成第二套事实）
+	ImageMirrors []string `json:"image_mirrors,omitempty"`
+	// 上游递交的两条登记标识（R-13 本批增补口径 + R-19）：跨域只存标识、不存内容（INV-33），
+	// 却是 R-25 引用来源 ①、REP-15 c7 被引用集群数与 FUNC-46 默认取值上下文的唯一本域事实源。
+	ParamTemplateRef string `json:"param_template_ref,omitempty"`
+	VersionRef       string `json:"version_ref,omitempty"`
 }
 
 func ignSHA256(text string) string {
@@ -1017,6 +1048,16 @@ func ignApplyVersionRef(db *gorm.DB, p *ignDeployParams, versionRef string) erro
 		return ignGovernanceRefuse(fmt.Sprintf(
 			"交付版本引用 %q 的状态为「%s」（%s），不在可交付范围（R-19：须未归档且就绪及之后 —— 就绪由发行包下载执行达成）",
 			versionRef, ignVersionStatusLabel(status), status))
+	}
+	return ignApplyVersionRow(row, p)
+}
+
+// ignApplyVersionRow 把已解析、已判态的交付版本行灌进渲染面（resolveParamFace 第 2 层字段映射的
+// 唯一实现；受理侧 ignApplyVersionRef 读同一份映射 —— 两份映射必然漂移，漂移后预检就是误导源）。
+// 版本行里没有的登记事实不覆盖下层已取到的值（"命中不到就跳过"，与 ignVersionFaceHits 的键域口径一致）。
+func ignApplyVersionRow(row map[string]any, p *ignDeployParams) error {
+	if row == nil {
+		return nil
 	}
 	p.K8sVersion = strings.TrimPrefix(Str(row["orchestrator_version"]), "v")
 	if cni := strings.ToLower(Str(row["cni_plugin"])); cni != "" {

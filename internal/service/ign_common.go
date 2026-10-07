@@ -53,6 +53,7 @@ var ignPrefixes = map[string]string{
 	"BootstrapCredential": "BCR", // AGG-IGN-04 引导凭据
 	"ExecutorTlsBinding":  "TLS", // AGG-IGN-05 通道证书绑定
 	"ExecTask":            "TSK", // AGG-IGN-06 执行任务
+	"IgnParamTemplate":    "TMP", // AGG-IGN-07 交付参数面模板（v1.3）
 	"ForceRemove":         "RMV", // 强制注销申请载体
 }
 

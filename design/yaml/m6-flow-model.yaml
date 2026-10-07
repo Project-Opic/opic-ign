@@ -1,5 +1,5 @@
 model_type: FLOW
-version: '1.1.1'
+version: '1.3'
 domain: 交付执行域
 flows:
 - id: FLOW-PROC-01
@@ -752,3 +752,169 @@ flows:
   - activityId: A15
     name: 域外：上游据结论写自己的步骤状态（步骤权威在 O-CLC，本域不越界）
     activityType: END
+
+# ---- v1.3 批：参数面线（PROC-07）。flowType=COLLABORATION、刻意不写 nodeGraph：
+#      与 PROC-01~06 同一口径（本域流程是协作叙事，可执行定义只来自带 nodeGraph 的审批流），
+#      因此不会被 ensureFlowDefinitions 导入为可执行流程定义，代码零改动。
+- id: FLOW-PROC-07
+  name: 集群交付配置的查看、覆写与校验
+  flowType: COLLABORATION
+  description: 让管理员看得见"这个集群下次装机到底会用哪些值"、改得动其中某一个字段、并且在真正下发前拿到与受理完全一致的结论
+  businessObjectRefs:
+  - AGG-IGN-08
+  - AGG-IGN-07
+  - AGG-IGN-01
+  - AGG-IGN-06
+  roleRefs:
+  - IGN-ROLE-01
+  - IGN-ROLE-02
+  trigger:
+    triggerType: BEHAVIOR
+    behaviorRef: FUNC-46
+  preconditions:
+  - 进入时必须选定集群 + 文件面（一次只看一轴），未选定不出表
+  postconditions:
+  - 覆写行状态与来源标注、应用追溯三者一致；本流程不产生任务、不派发命令、不改上游任何对象，覆写与回落均不进审批
+  startActivity: A01
+  endActivities:
+  - A11
+  - A17
+  - A19
+  activities:
+  - activityId: A01
+    name: 选定集群 + 文件面（一次只看一轴）
+    activityType: START
+    nextActivities:
+    - A02
+  - activityId: A02
+    name: 逐字段四层取值（覆写 → 交付版本派生 → 参数面模板 → 平台缺省面）
+    activityType: BEHAVIOR_CALL
+    behaviorRef: FUNC-46
+    ruleRef: R-20
+    nextActivities:
+    - A03
+  - activityId: A03
+    name: 该字段是否有覆写
+    activityType: GATEWAY
+    ruleRef: R-20
+    branches:
+    - branchName: 有（生效态覆写行）
+      targetActivity: A04
+    - branchName: 无
+      isDefault: true
+      targetActivity: A05
+  - activityId: A04
+    name: 生效来源 = 集群覆写：显示覆写值 + 事由 + 应用追溯
+    activityType: TASK
+    ruleRef: R-21
+    nextActivities:
+    - A09
+  - activityId: A05
+    name: 交付版本派生是否命中
+    activityType: GATEWAY
+    branches:
+    - branchName: 命中
+      targetActivity: A06
+    - branchName: 未命中且请求体携带面标识
+      ruleRef: R-21
+      targetActivity: A07
+    - branchName: 未命中且面标识为空（整层跳过，不静默改用默认模板）
+      isDefault: true
+      ruleRef: R-20
+      targetActivity: A08
+  - activityId: A06
+    name: 生效来源 = 交付版本派生
+    activityType: TASK
+    nextActivities:
+    - A09
+  - activityId: A07
+    name: 生效来源 = 参数面模板（模板字段行整体参与取值）
+    activityType: TASK
+    ruleRef: R-22
+    nextActivities:
+    - A09
+  - activityId: A08
+    name: 生效来源 = 平台缺省面
+    activityType: TASK
+    nextActivities:
+    - A09
+  - activityId: A09
+    name: 人工编辑单个字段并保存覆写（新值初值 = 生效值，事由必填）
+    activityType: BEHAVIOR_CALL
+    behaviorRef: FUNC-47
+    nextActivities:
+    - A10
+  - activityId: A10
+    name: 保存即校验（键域合法 + 值形态与字段行一致）
+    activityType: GATEWAY
+    ruleRef: INV-41
+    branches:
+    - branchName: 违反 INV-41 / R-22
+      targetActivity: A11
+    - branchName: 通过
+      isDefault: true
+      targetActivity: A12
+  - activityId: A11
+    name: 400 校验失败：不落库、不产生任务
+    activityType: END
+  - activityId: A12
+    name: 覆写登记（含事由）：状态 = 生效
+    activityType: TASK
+    ruleRef: R-21
+    nextActivities:
+    - A13
+    - A20
+  - activityId: A13
+    name: 可选 dry-run 预检
+    activityType: GATEWAY
+    ruleRef: R-23
+    branches:
+    - branchName: 执行 dry-run
+      targetActivity: A14
+    - branchName: 跳过
+      isDefault: true
+      targetActivity: A15
+  - activityId: A14
+    name: dry-run：五不（不写盘 / 不建任务 / 不占额度 / 不改覆写行 / 不进台账）→ 结论 + 命中层 + 清单三态预判
+    activityType: BEHAVIOR_CALL
+    behaviorRef: FUNC-48
+    ruleRef: R-23
+    nextActivities:
+    - A15
+  - activityId: A15
+    name: 等待下一次派发时被交付门面消费（覆写只在真正派发时生效）
+    activityType: SYSTEM_TASK
+    ruleRef: R-21
+    nextActivities:
+    - A16
+  - activityId: A16
+    name: 域外：上游派发后清单三态判定（优先于覆写且不受覆写影响）
+    activityType: GATEWAY
+    ruleRef: R-18
+    branches:
+    - branchName: 有清单且无本域标记
+      ruleRef: R-24
+      targetActivity: A17
+    - branchName: 无清单接管 / 有标记幂等改写
+      isDefault: true
+      targetActivity: A18
+  - activityId: A17
+    name: 拒绝受理：覆写行仍在但显示「已保存 · 未生效（清单归属冲突）」
+    activityType: END
+  - activityId: A18
+    name: 按覆写值渲染命令面并执行
+    activityType: SYSTEM_TASK
+    nextActivities:
+    - A19
+  - activityId: A19
+    name: 应用成功后回填 appliedTaskNo / appliedAt
+    activityType: BEHAVIOR_CALL
+    behaviorRef: B-AUTO-15
+    ruleRef: R-21
+  - activityId: A20
+    name: 回落覆写：状态置已回落（行不删）+ 清空 appliedTaskNo / appliedAt
+    activityType: BEHAVIOR_CALL
+    behaviorRef: FUNC-49
+    ruleRef: INV-42
+    nextActivities:
+    - A02

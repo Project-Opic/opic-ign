@@ -1,5 +1,5 @@
 model_type: REPORT
-version: '1.1'
+version: '1.3'
 domain: 交付执行域
 query_reports:
 - id: REP-01
@@ -1088,3 +1088,398 @@ query_reports:
   reportOptions: null
   version: '1.1'
   caliberNote: 口径注记（v1.1）：幂等复用与新任务在此可见（同一来源任务 + 序号只对一个 taskNo，INV-35）；不复制第二份事实、不建新存储（与 REP-09 同一查询面）；只暴露跨域标识与结论依据，不含参数与命令面，故四个界面角色全可读（敏感级低于纠偏页签）；FUNC-35 的门面回读是机器对机器的读接口、显式登记为不出报表
+
+# ---- v1.3 批新增 4 张（需求文档 5.16~5.19）：模板列表 / 模板详情 / 集群交付配置视图 / 清单原文只读视图 ----
+# 编号按报表序、功能点按类别序，故 REP-17↔FUNC-46、REP-18↔FUNC-45 是交叉的（两套序不互相重排，见 5.20）。
+- id: REP-15
+  name: 参数面模板列表
+  alias: rep15
+  objectType: LIST_QUERY
+  description: 列表（规格 5.16，v1.3 新增）。按文件面分组的模板头列表；停用态默认筛除可切换、已软删行默认可见；被引用集群数可跳 REP-17。
+  behaviorRef: FUNC-38
+  sourceObjects:
+  - objectRef: AGG-IGN-07
+    alias: ignparamtemplate
+    primary: true
+    sourceNote: 列表；主表按文件面分组、启用态置顶、登记时间倒序
+  joins: []
+  parameters:
+  - name: p1
+    label: 文件面
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  - name: p2
+    label: 模板状态（缺省筛除 DISABLED，可切换显示；软删行默认可见）
+    dataType: String
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  - name: p3
+    label: 默认标记
+    dataType: Boolean
+    required: false
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  - name: p4
+    label: 关键字（只匹配模板名与编号，不检索字段值内容）
+    dataType: String
+    required: false
+    allowedOperators:
+    - LIKE
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: IgnParamTemplate.fileFace
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  - conditionId: C02
+    leftExpression: IgnParamTemplate.templateStatus
+    operator: EQ
+    parameterRef: p2
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  - conditionId: C03
+    leftExpression: IgnParamTemplate.isDefault
+    operator: EQ
+    parameterRef: p3
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  - conditionId: C04
+    leftExpression: IgnParamTemplate.templateName
+    operator: LIKE
+    parameterRef: p4
+    logicalConnector: AND
+    group: BASE
+    skipWhenParameterEmpty: true
+  resultColumns:
+  - name: c1
+    label: 模板编号
+    dataType: String
+    sourceExpression: IgnParamTemplate.templateNo
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 模板名
+    dataType: String
+    sourceExpression: IgnParamTemplate.templateName
+    aggregateFunction: NONE
+    sortable: true
+  - name: c3
+    label: 文件面
+    dataType: String
+    sourceExpression: IgnParamTemplate.fileFace
+    aggregateFunction: NONE
+    sortable: true
+  - name: c4
+    label: 字段行数
+    dataType: Integer
+    sourceExpression: count(IgnParamTemplateItem)
+    aggregateFunction: COUNT
+    sortable: true
+  - name: c5
+    label: 状态
+    dataType: String
+    sourceExpression: IgnParamTemplate.templateStatus
+    aggregateFunction: NONE
+    sortable: true
+  - name: c6
+    label: 默认徽标
+    dataType: String
+    sourceExpression: IgnParamTemplate.isDefault
+    aggregateFunction: NONE
+    sortable: false
+  - name: c7
+    label: 被引用集群数（跳 REP-17）
+    dataType: Integer
+    sourceExpression: count(ClusterConfigOverride by 面标识声明)
+    aggregateFunction: COUNT
+    sortable: true
+  - name: c8
+    label: 登记人 / 登记时间
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: true
+  groupBy: []
+  having: []
+  orderBy:
+  - name: o1
+    sourceExpression: IgnParamTemplate.fileFace
+    direction: ASC
+  - name: o2
+    sourceExpression: IgnParamTemplate.templateStatus
+    direction: ASC
+  - name: o3
+    sourceExpression: IgnParamTemplate.createdAt
+    direction: DESC
+  pagination:
+    enabled: true
+    defaultPageSize: 20
+    maxPageSize: 100
+  reportOptions: null
+  version: '1.3'
+  caliberNote: 口径注记（v1.3）：默认徽标只在启用态出现（INV-43 的界面侧投影 —— 停用态挂默认标记会让人以为它会兜底，而 R-20 规定它压根不参与兜底）；一个文件面至多一个默认，故徽标在同一文件面视图内至多一行；「停用是可往复态不是终态」，允许默认筛除且不违报表口径 3
+- id: REP-16
+  name: 参数面模板详情
+  alias: rep16
+  objectType: DETAIL_QUERY
+  description: 明细（规格 5.17，v1.3 新增）。三段分区：模板头 ｜ 字段行整组 ｜ 被引用出处。
+  behaviorRef: FUNC-39
+  sourceObjects:
+  - objectRef: AGG-IGN-07
+    alias: ignparamtemplate
+    primary: true
+    sourceNote: 明细；从表为聚合内子实体模板字段行（表 ign_param_template_item），按字段键字典序固定排列
+  joins: []
+  parameters:
+  - name: p1
+    label: 模板编号
+    dataType: String
+    required: true
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: IgnParamTemplate.templateNo
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+  resultColumns:
+  - name: c1
+    label: 字段键
+    dataType: String
+    sourceExpression: ParamTemplateItem.fieldKey
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 值形态
+    dataType: String
+    sourceExpression: ParamTemplateItem.valueShape
+    aggregateFunction: NONE
+    sortable: false
+  - name: c3
+    label: 字段值（按口径 1 脱敏，环境变量值一律掩码）
+    dataType: String
+    sourceExpression: ParamTemplateItem.fieldValue
+    aggregateFunction: NONE
+    sortable: false
+  - name: c4
+    label: 合法域核对结论（合法 / 让位 / 面外键）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c5
+    label: 被引用出处（上游集群模板的面标识 + 本域生效覆写行）
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  groupBy: []
+  having: []
+  orderBy:
+  - name: o1
+    sourceExpression: ParamTemplateItem.fieldKey
+    direction: ASC
+  pagination:
+    enabled: false
+    defaultPageSize: 0
+    maxPageSize: 0
+  reportOptions: null
+  version: '1.3'
+  caliberNote: 口径注记（v1.3）：字段行整组展示不可散改（R-22 保存即整组替换）；被引用出处必须列到「哪个上游集群模板的面标识指向它」（删除被拒时的解释义务，与 R-01 / R-25 同口径）；值为空且该键由版本派生覆盖时显示「让位」徽章，不显示为校验错误
+- id: REP-17
+  name: 集群交付配置视图
+  alias: rep17
+  objectType: DETAIL_QUERY
+  description: 明细（逐字段，规格 5.18，v1.3 新增）。本域唯一「逐字段带来源徽章」的报表：一行一个字段键，四层取值结果并列 + 生效值与生效来源 + 当前落盘与下次将生效两列并列 + 应用追溯。
+  behaviorRef: FUNC-46
+  sourceObjects:
+  - objectRef: AGG-IGN-08
+    alias: clusterconfigoverride
+    primary: true
+    sourceNote: 明细（逐字段）；行集 = 参数面全部字段键（REF-17~25），覆写行左连（无覆写也出行）
+  joins: []
+  parameters:
+  - name: p1
+    label: 集群标识
+    dataType: String
+    required: true
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  - name: p2
+    label: 文件面（一次只看一轴）
+    dataType: String
+    required: true
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: ClusterConfigOverride.clusterRef
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+  - conditionId: C02
+    leftExpression: ClusterConfigOverride.fileFace
+    operator: EQ
+    parameterRef: p2
+    logicalConnector: AND
+    group: BASE
+  resultColumns:
+  - name: c1
+    label: 字段键
+    dataType: String
+    sourceExpression: ClusterConfigOverride.fieldKey
+    aggregateFunction: NONE
+    sortable: true
+  - name: c2
+    label: 平台缺省面值（第 4 层地板）
+    dataType: String
+    sourceExpression: REF-17~REF-25 当前值
+    aggregateFunction: NONE
+    sortable: false
+  - name: c3
+    label: 参数面模板值（第 3 层；面标识为空 ⇒ 整列显示「未携带面标识，本层跳过」）
+    dataType: String
+    sourceExpression: ParamTemplateItem.fieldValue
+    aggregateFunction: NONE
+    sortable: false
+  - name: c4
+    label: 交付版本派生值（第 2 层）
+    dataType: String
+    sourceExpression: DeliveryVersion 派生
+    aggregateFunction: NONE
+    sortable: false
+  - name: c5
+    label: 覆写值 + 覆写状态 + 事由（第 1 层）
+    dataType: String
+    sourceExpression: ClusterConfigOverride.overrideValue
+    aggregateFunction: NONE
+    sortable: false
+  - name: c6
+    label: 生效值 + 生效来源徽章（IGN_PARAM_SOURCE 四值之一，必现不得为空）
+    dataType: String
+    sourceExpression: R-20 逐字段判定
+    aggregateFunction: NONE
+    sortable: false
+  - name: c7
+    label: 当前落盘
+    dataType: String
+    sourceExpression: 工作目录派生
+    aggregateFunction: NONE
+    sortable: false
+  - name: c8
+    label: 下次将生效
+    dataType: String
+    sourceExpression: R-20 逐字段判定
+    aggregateFunction: NONE
+    sortable: false
+  - name: c9
+    label: 应用追溯（appliedTaskNo / appliedAt，无值显示「未应用」，可跳 REP-10）
+    dataType: String
+    sourceExpression: ClusterConfigOverride.appliedTaskNo
+    aggregateFunction: NONE
+    sortable: false
+  - name: c10
+    label: 冲突标注（R-24「已保存 · 未生效（清单归属冲突）」，由受理侧 R-18 判定回吐）
+    dataType: String
+    sourceExpression: R-18 判定
+    aggregateFunction: NONE
+    sortable: false
+  groupBy: []
+  having: []
+  orderBy:
+  - name: o1
+    sourceExpression: ClusterConfigOverride.fieldKey
+    direction: ASC
+  pagination:
+    enabled: false
+    defaultPageSize: 0
+    maxPageSize: 0
+  reportOptions: null
+  version: '1.3'
+  caliberNote: 口径注记（v1.3）：「当前落盘」与「下次将生效」并列显示、不合并成一列（合并就是重新制造本批要消灭的「已保存 vs 已生效」混淆）；生效来源徽章取值必须落在 IGN_PARAM_SOURCE 四类之内，禁止出现「来源不明」的空徽章（5.20 ⑯）；「当前落盘」取数失败显示「不可用 + 原因」（报表口径 2），不以空值或「与生效值相同」代替；字段键与 REP-15 / 16 共用同一套合法域（REF-17~25），不各写一套校验（5.20 ⑲）
+- id: REP-18
+  name: 清单原文只读视图
+  alias: rep18
+  objectType: DETAIL_QUERY
+  description: 只读文本视图（规格 5.19，v1.3 新增）。本域唯一一类「非结构化整行」输出：把集群工作目录里的清单 / 配置整份文本带行号呈现 —— 不是台账、不是明细。
+  behaviorRef: FUNC-45
+  sourceObjects:
+  - objectRef: AGG-IGN-08
+    alias: clusterconfigoverride
+    primary: true
+    sourceNote: 只读文本；正文来源是工作目录派生文件（命令面私有派生事实，不入对象模型，R-24）
+  joins: []
+  parameters:
+  - name: p1
+    label: 集群标识
+    dataType: String
+    required: true
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  - name: p2
+    label: 文件面
+    dataType: String
+    required: true
+    allowedOperators:
+    - EQ
+    sourceField: ''
+  conditions:
+  - conditionId: C01
+    leftExpression: ClusterConfigOverride.clusterRef
+    operator: EQ
+    parameterRef: p1
+    logicalConnector: AND
+    group: BASE
+  - conditionId: C02
+    leftExpression: ClusterConfigOverride.fileFace
+    operator: EQ
+    parameterRef: p2
+    logicalConnector: AND
+    group: BASE
+  resultColumns:
+  - name: c1
+    label: 带行号的整份文本（可复制、不提供导出）
+    dataType: String
+    sourceExpression: 工作目录派生文件（过 R-16 同一套识别，命中凭据形态整行掩码）
+    aggregateFunction: NONE
+    sortable: false
+  - name: c2
+    label: 读取人 / 读取时间戳注记
+    dataType: String
+    sourceExpression: ''
+    aggregateFunction: NONE
+    sortable: false
+  - name: c3
+    label: 掩码行计数与告警标记
+    dataType: Integer
+    sourceExpression: count(掩码行)
+    aggregateFunction: COUNT
+    sortable: false
+  groupBy: []
+  having: []
+  orderBy: []
+  pagination:
+    enabled: false
+    defaultPageSize: 0
+    maxPageSize: 0
+  reportOptions: null
+  version: '1.3'
+  caliberNote: 口径注记（v1.3）：本域唯一「查询类但单独发牌」的报表（分类归属与权限档位解耦，判据是内容敏感度，R-26）；也是唯一「读也留痕」的报表（5.20 ⑰，其余 17 张保持读不留痕）；不提供任何写入口（写入口是 FUNC-47 字段级覆写，走另一张牌）；每次打开都重新读、重新审计，关闭不做缓存复用

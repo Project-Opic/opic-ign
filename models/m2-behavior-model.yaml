@@ -1,5 +1,5 @@
 model_type: BEHAVIOR
-version: '1.2'
+version: '1.3'
 domain: 交付执行域
 behaviors:
 - id: FUNC-01
@@ -748,9 +748,10 @@ behaviors:
   - 本机执行位可用：命令面挂载存在且可执行，否则受理即拒绝并记 TOOL_UNAVAILABLE（R-15，绝不静默改走别的执行位）
   - 节点清单按动作族取用（R-13 解析时校验）：安装族携带全量在册拓扑（地址 + 角色 + 节点名的结构化条目，角色词汇由本域归一）、节点增删类至少一条且可为地址-only、其余动作该字段必须为空；地址 / 角色 / 节点名形态非法或拓扑不满足「至少一个控制面 + 专责组成员数为奇数」⇒ 治理拒绝
   - 安装族可携带交付版本引用：命中版本目录（版本号或名称）即派生组件版本面，引用非空而目录内不可解析 ⇒ 治理拒绝（INV-33 跨域标识必须可解析）；引用非空而版本不在可交付范围（R-19：须未归档且就绪及之后，故草稿 / 下载中 / 失败 / 已归档一律拒绝）⇒ 同样治理拒绝；引用为空 ⇒ 沿用发行包自身版本，本域不猜版本号
+  - 【v1.3 批】安装族可携带参数面模板标识（可空）：只递交「用哪张」这一登记标识，不接受模板内容（键值对一律拒绝，R-13 / R-20）；标识非空而本域无启用态同名模板 ⇒ 该层整体跳过并在结论中说明「模板未启用或不存在」，不静默改用默认模板
   postconditions:
   - 同步返回本域 taskNo 作为远端任务引用（上游据此写 remote_task_ref）；执行本身异步（B-AUTO-11）
-  - 安装族受理时该集群的清单与配置已按「台账拓扑 + 参数缺省面（REF-17~25）+ 版本派生」对齐（B-AUTO-15 / R-18：接管 / 幂等 / 冲突三态，每一步核对、首步必须落定）
+  - 安装族受理时该集群的清单与配置已按四层取值（覆写 / 版本派生 / 参数面模板 / 缺省面，R-20）+ 台账拓扑对齐（B-AUTO-15 / R-18：接管 / 幂等 / 冲突三态，每一步核对、首步必须落定），并把真实参与渲染的覆写行回填追溯对（R-21）
   - 同集群存在在途任务时照常受理并置 RUNNING（语义为排队中，R-17），不引入新状态、不判为失败
   appliedRules:
   - INV-28
@@ -773,6 +774,8 @@ behaviors:
   - R-17
   - R-18
   - R-19
+  - R-20
+  - R-21
   requiredPermissions:
   - PERM-FUNC-34
   syncTriggers: []
@@ -795,6 +798,7 @@ behaviors:
   - PERM-FUNC-35
   syncTriggers: []
   queryReportRef: null
+  reportException: 第五部分 5.20 ⑤ 登记的服务接口例外：门面回执与增量日志是机器对机器的读接口、没有展示面，故不建报表 —— 与 FUNC-50 并列在「无报表的查询功能点」两条之内（v1.1 时未登记本字段，v1.3 批补齐口径）
 - id: FUNC-36
   name: 交付门面 · 任务撤销
   ownerEntity: AGG-IGN-06
@@ -830,6 +834,260 @@ behaviors:
   - PERM-FUNC-37
   syncTriggers: []
   queryReportRef: REP-14
+# ---- v1.3 批（易用性 / 管理员体验增补）：FUNC-38~50「参数面模板」+「集群交付配置」两屏 ----
+# 「触发联动」列 50 行全为「无」⇒ 本批 syncTriggers 一律为空：跨对象事实全部由 R-20~R-26 与 B-AUTO-15 承载，
+# 不存在「A 的变更直接驱动写 B」的因果链（需求文档 3.1.1 结构段 + 《编制说明》D.5）。
+- id: FUNC-38
+  name: 参数面模板列表查询
+  ownerEntity: AGG-IGN-07
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions:
+  - 过滤轴为文件面 + 状态 + 默认标记 + 关键字；停用态默认筛除、可切换显示（停用是可往复态不是终态，不违报表口径 3），已软删行默认可见
+  - 关键字只匹配模板名与编号，不检索字段值内容
+  postconditions:
+  - 默认徽标只在启用态出现（INV-43 的界面侧投影），同一文件面视图内至多一行带徽标
+  - 每行带被引用集群数并可跳「集群交付配置」屏 —— 让「这张模板会被谁用」在同一屏上可见
+  appliedRules:
+  - INV-41
+  - INV-43
+  requiredPermissions:
+  - PERM-FUNC-38
+  syncTriggers: []
+  queryReportRef: REP-15
+- id: FUNC-39
+  name: 参数面模板详情查询（含字段行）
+  ownerEntity: AGG-IGN-07
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions:
+  - 三段分区：模板头 / 字段行整组 / 被引用出处
+  postconditions:
+  - 字段行整组展示不可散改（R-22：保存即整组替换），从表按字段键字典序固定排列（同面任何时候同序，否则整组 diff 无法比对）
+  - 被引用出处必须列到「哪个上游集群模板的面标识指向它」与本域生效覆写行（删除被拒时的解释义务，与 R-01 / R-25 同口径）
+  - 值列按报表口径 1 脱敏，环境变量值一律掩码；值为空且该键由版本派生覆盖时显示「让位」而非校验错误
+  appliedRules:
+  - INV-41
+  - INV-43
+  - R-22
+  - R-25
+  requiredPermissions:
+  - PERM-FUNC-39
+  syncTriggers: []
+  queryReportRef: REP-16
+- id: FUNC-40
+  name: 参数面模板登记
+  ownerEntity: AGG-IGN-07
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 模板名称在未删除范围内不重名；文件面必填且只属一轴
+  - 允许字段行为空（草稿态）—— 登记动作与「这套口径包含哪些字段」的整组覆写是两个动作，前者抢一个编号、后者反复改内容
+  postconditions:
+  - 分配业务编号 TMP-YYYYMMDD-NNNN 并置状态 DRAFT、isDefault=false
+  - 「保存松、提交严」：本动作只保证编号与命名可用，键域合法性由整组保存（FUNC-41）与启用（FUNC-42）把关
+  appliedRules:
+  - INV-41
+  - INV-43
+  requiredPermissions:
+  - PERM-FUNC-40
+  syncTriggers: []
+- id: FUNC-41
+  name: 参数面模板字段行整体覆写
+  ownerEntity: AGG-IGN-07
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 提交的是整组字段行（无单行编辑入口，R-22）；同面内不重行
+  - 每个字段键必须落在 REF-17~REF-25 面定义内，且值按受理侧同一套形态校验器判定（R-23 三处口径一致）
+  - 面外键是治理拒绝、不是表单校验错误（INV-41 的判据：命令面私有不能从台账死角漏出去）
+  postconditions:
+  - 模板字段行整组替换（未提交的行即不存在）；值形态随字段键由面定义带出、不可人工改
+  - 启用 / 整组替换 / 设默认 / 软删除四类治理动作均需事由（治理资产的动作留痕）
+  appliedRules:
+  - INV-41
+  - R-22
+  - R-23
+  requiredPermissions:
+  - PERM-FUNC-41
+  syncTriggers: []
+- id: FUNC-42
+  name: 参数面模板启用 / 停用
+  ownerEntity: AGG-IGN-07
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 启用前置：字段行非空且全部合法（键域 + 形态）
+  - 停用默认模板必须先取消默认或改指（INV-43）
+  postconditions:
+  - 启用时回填 enabledAt；停用只表示「不再被新集群选中」，已生效的取值不作废、覆写行不回收（R-25）
+  - 停用后默认徽标同时消失（R-20：停用态压根不参与兜底，挂着默认会误导）
+  appliedRules:
+  - INV-41
+  - INV-43
+  - R-20
+  - R-25
+  requiredPermissions:
+  - PERM-FUNC-42
+  syncTriggers: []
+- id: FUNC-43
+  name: 参数面模板设为默认
+  ownerEntity: AGG-IGN-07
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 仅平台运维管理员（IGN-ROLE-02）—— 影响面是「后续新建集群缺省挂哪张」，跨集群，故与模板内容维护分档（INV-43 的权限侧理由）
+  - 目标模板须处于启用态，事由必填
+  postconditions:
+  - 同一文件面内原默认行自动取消标记（同面至多一条默认）
+  - 默认只作用于上游选择器的缺省值，不参与渲染兜底：面标识为空的请求仍整层跳过模板（R-20），改默认不会让存量集群装机参数静默漂移
+  appliedRules:
+  - INV-43
+  - R-20
+  requiredPermissions:
+  - PERM-FUNC-43
+  syncTriggers: []
+- id: FUNC-44
+  name: 参数面模板软删除
+  ownerEntity: AGG-IGN-07
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 前置引用校验：① 上游 O-CLC 集群模板登记的面标识 ② 本域生效态覆写所依据的模板行（R-25）
+  postconditions:
+  - 拒绝时必须把两类出处列在确认框内（出处即下一步动作的位置，可跳「集群交付配置」屏）
+  - 软删除是标记不是第四个状态值；字段行随聚合级联
+  appliedRules:
+  - INV-43
+  - R-25
+  requiredPermissions:
+  - PERM-FUNC-44
+  syncTriggers: []
+- id: FUNC-45
+  name: 清单原文只读视图
+  ownerEntity: AGG-IGN-08
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions:
+  - 独立权限码（PERM-FUNC-45）：不随「集群交付配置查看」的发牌附带，也不随查询类默认放开（R-26 的判据是内容敏感度，不是功能分类）
+  - 入口必须选定集群 + 文件面；无权限时按钮不渲染并给出原因位
+  postconditions:
+  - 带行号的整份文本、可复制、不提供编辑态、不提供下载导出（导出等于把整份文件搬到界外）
+  - 每次读取写一条审计（操作人 / 集群 / 文件面 / 时刻）—— 本域唯一「读也留痕」的视图
+  - 渲染前过 R-16 同一套凭据形态识别，命中即整行掩码并告警计数（片段掩码仍是可拼回的信息）
+  - 原文是命令面私有的派生事实：本视图不提供任何写入口，写入口是 FUNC-47 的字段级覆写（走另一张牌）
+  appliedRules:
+  - R-16
+  - R-24
+  - R-26
+  requiredPermissions:
+  - PERM-FUNC-45
+  syncTriggers: []
+  queryReportRef: REP-18
+- id: FUNC-46
+  name: 集群交付配置查看（字段级 + 逐字段来源标注）
+  ownerEntity: AGG-IGN-08
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions:
+  - 必须选定集群 + 文件面才出表（一次只看一轴：两轴的键域不同、覆写互不遮蔽，混看会得出错误的「当前值」）
+  postconditions:
+  - 逐字段一行：四层取值结果（覆写 / 版本派生 / 参数面模板 / 平台缺省面）并列可见，且必带生效来源徽章（IGN_PARAM_SOURCE 四值之一，禁止「来源不明」的空徽章）—— R-20 的显示侧落点
+  - 「当前落盘」与「下次将生效」两列并列、不合并（合并就是重新制造本批要消灭的「已保存 vs 已生效」混淆）
+  - 面标识为空 ⇒ 模板列整列显示「未携带面标识，本层跳过」，不回落到默认模板（R-20 的分支 H）
+  - 应用追溯两列无值时显式显示「未应用」，不给空单元格；appliedTaskNo 可跳任务详情
+  - 冲突态由受理侧 R-18 判定回吐并叠加「已保存 · 未生效（清单归属冲突）」标注，界面不自行推断（R-24）
+  - 「当前落盘」列取派生事实失败时显示「不可用 + 原因」，不以空值或「与生效值相同」代替（报表口径 2）
+  appliedRules:
+  - INV-41
+  - INV-42
+  - R-20
+  - R-21
+  - R-24
+  requiredPermissions:
+  - PERM-FUNC-46
+  syncTriggers: []
+  queryReportRef: REP-17
+- id: FUNC-47
+  name: 集群交付配置覆写保存
+  ownerEntity: AGG-IGN-08
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 单字段粒度（集群标识 + 文件面 + 字段键坐标）；事由必填 —— 治理事实必须说为什么改
+  - 字段键须落在面定义内（INV-41），值过受理侧同一套形态校验器（R-23）；列表值为整体替换后的全量值，界面不给元素级增删控件（R-22）
+  postconditions:
+  - 保存即新建或改写该坐标的当前态：状态置 EFFECTIVE、写 overriddenBy / overriddenAt，已回落行再覆写即回到生效（两态可往复）
+  - 不重写已落盘文件、不触发派发：只改「下次将生效」列（R-21），追溯对在真正被消费前保持为空
+  - 冲突态（该集群清单无本域派生标记）下照常登记但不参与渲染，界面显示「已保存 · 未生效」（R-24）
+  appliedRules:
+  - INV-41
+  - INV-42
+  - R-21
+  - R-22
+  - R-23
+  - R-24
+  requiredPermissions:
+  - PERM-FUNC-47
+  syncTriggers: []
+- id: FUNC-48
+  name: 集群交付配置校验（dry-run 预检）
+  ownerEntity: AGG-IGN-08
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 复用受理侧同一套校验器与三态对齐判定，判定次序固定：请求形态（R-13）→ 版本可用（R-19）→ 参数面形态 → 三态归属（R-18）
+  postconditions:
+  - 五不：不写盘 / 不建任务 / 不占并发额度 / 不改覆写行 / 不进受理台账（R-23，流程侧见 PROC-07 的 M 分支）
+  - 输出「通过 / 不通过 + 逐字段原因 + 命中层 + 清单三态预判」，结论必须与真实受理一致 —— 预检与受理各写一套逻辑必然漂移，漂移后预检就成了误导源
+  appliedRules:
+  - R-13
+  - R-18
+  - R-19
+  - R-20
+  - R-23
+  requiredPermissions:
+  - PERM-FUNC-48
+  syncTriggers: []
+- id: FUNC-49
+  name: 集群交付配置覆写回落
+  ownerEntity: AGG-IGN-08
+  behaviorType: COMMAND
+  triggerType: USER_ACTION
+  preconditions:
+  - 只对「生效」行渲染该按钮（已回落的坐标已经不在任何层上）；列表值的回落是一键回落整项
+  postconditions:
+  - 状态翻面为 ROLLED_BACK + 回填 rolledBackAt，同时清空 appliedTaskNo / appliedAt（INV-42：留着旧的追溯对就分不清「曾经生效」与「现在正生效」）
+  - 回落不删行 —— 行保留才能让「这个集群曾经改过什么」可查；取值回落到下层（R-20 次序不破）
+  - 回落不是删除动作：本域对覆写没有任何删除入口（「清掉覆写」与「回到缺省」是两件事，界面只给后者）
+  appliedRules:
+  - INV-42
+  - R-20
+  - R-21
+  requiredPermissions:
+  - PERM-FUNC-49
+  syncTriggers: []
+- id: FUNC-50
+  name: 跨中心交付配置只读通道
+  ownerEntity: AGG-IGN-08
+  behaviorType: QUERY
+  triggerType: SYSTEM
+  preconditions:
+  - 服务身份鉴权（facade token + ign:FUNC-50）；与 FUNC-08 / 19 / 35 同列「无菜单的服务接口」
+  - 只出不入：上游经本通道读四层取值结果，写入口仍只在本域「集群交付配置」屏
+  postconditions:
+  - 返回字段键 + 生效值 + 生效来源档 + 追溯两列；反复调用无副作用、不产生任务、不改覆写行
+  - 只回吐取值结论与来源，不下发模板内容、不下发原文文本（原文走本域 FUNC-45 的独立权限码）
+  - 不建报表（机器对机器的读接口、无展示面，与 FUNC-35 同一登记口径）
+  appliedRules:
+  - INV-33
+  - R-20
+  - R-21
+  requiredPermissions:
+  - PERM-FUNC-50
+  syncTriggers: []
+  queryReportRef: null
+  reportException: 第五部分 5.20 ⑤ 登记的服务接口例外：跨中心只读通道是机器对机器的读接口、没有展示面，故不建报表 —— 与 FUNC-35 并列在「无报表的查询功能点」两条之内
 - id: B-AUTO-01
   name: 发行包下载执行
   ownerEntity: AGG-IGN-01
@@ -1078,12 +1336,21 @@ behaviors:
   preconditions:
   - 受理安装族步骤（FUNC-34 命中步骤编码 01~07；每一步都核对，首步必须落定）
   postconditions:
-  - 按「台账拓扑（请求体节点清单）+ 参数缺省面（REF-17~25）+ 交付版本派生」把该集群的清单与配置对齐落盘，三态：无清单 ⇒ 生成并写本域派生标记（接管）；有本域标记 ⇒ 逐字段跟随台账与参数改写（幂等可重入）；有清单而无标记 ⇒ 拒绝改写（冲突态不静默覆盖既有事实）—— 细则见 R-18
+  - 【v1.3 改述】按四层逐字段取值 ——「集群覆写（生效态）> 交付版本派生（请求体版本引用命中目录）> 参数面模板（请求体携带的面标识命中本域启用态模板；面标识为空 ⇒ 整层跳过、不回落到默认模板）> 平台缺省面（REF-17~25）」，再与该集群的台账拓扑（请求体节点清单）一起把清单与配置对齐落盘；三态判定不变：无清单 ⇒ 生成并写本域派生标记（接管）；有本域标记 ⇒ 逐字段跟随台账与参数改写（幂等可重入）；有清单而无标记 ⇒ 拒绝改写（冲突态不静默覆盖既有事实，覆写照常登记但不参与渲染）—— 取值层权威在 R-20，三态细则权威在 R-18
+  - 【v1.3 新增】对齐成功后把真实参与渲染的覆写行回填 appliedTaskNo / appliedAt（R-21）：回答「我改的到底生效了没」；已回落行不参与取值也不回填
   - 派生标记同时快照当次落盘的网段 / 后缀 / 仓库 / 成员，执行位取环境时读同一份事实（单一事实源，不另设第二套清单）
   - 节点增删类只核对在册事实、不改写清单；具体手段属本域命令面私有事实、不进模型（Q-69 裁定 ②）
   appliedRules:
   - INV-36
+  - INV-41
+  - INV-42
   - R-13
+  - R-15
+  - R-18
+  - R-20
+  - R-21
+  - R-22
+  - R-24
   - REF-13
   - REF-17
   - REF-18
@@ -1094,7 +1361,5 @@ behaviors:
   - REF-23
   - REF-24
   - REF-25
-  - R-15
-  - R-18
   requiredPermissions: []
   syncTriggers: []

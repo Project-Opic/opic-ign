@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"sort"
 	"strings"
 
 	"gitcode.com/opic-ontology/opic-techbase/internal/config"
@@ -38,57 +40,102 @@ func SyncUserRolesByCodes(userID int64, roleCodes []string) error {
 	return SetUserRoles(userID, roleIDs)
 }
 
-// ---------- 种子数据(seed.py 对应;交付执行域 M5 定制) ----------
+// ---------- 种子数据(交付执行域 M5:m5-actor-model.yaml + m2-behavior-model.yaml 派生) ----------
 
-var seedRoles = []struct{ Code, Name, Desc string }{
-	{"admin", "系统管理员", "系统内置超级管理员"},
-	{"IGN-ROLE-01", "交付管理员", "交付版本编目与上架、执行机注册与引导、任务提交与取消(M5 ACTOR-IGN-ROLE-01)"},
-	{"IGN-ROLE-02", "平台运维管理员", "运行参数维护、TLS 降级声明、审批执行机强制注销(M5 ACTOR-IGN-ROLE-02)"},
-	{"IGN-ROLE-03", "交付审计员", "交付执行域全过程取证;全部菜单只读可见(零写操作)(M5 ACTOR-IGN-ROLE-03)"},
-	{"IGN-ROLE-04", "交付只读用户", "目录/台账/日志只读查询(M5 ACTOR-IGN-ROLE-04)"},
-	{"IGN-ROLE-05", "执行机代理", "服务身份(非岗位):引导回连/跨中心视图/任务回执(M5 ACTOR-IGN-ROLE-05)"},
+// bizPermPrefix 业务权限码前缀:sys_permission.code = "<域码>:<m2 行为号>"，
+// 与路由层 RequirePermission("ign:FUNC-nn") 同口径;m5 permissions[].permissionId(PERM-FUNC-nn)
+// 是模型侧编号，不落库。
+const bizPermPrefix = "ign"
+
+// adminRoleCode 底座超管位角色码(不在 m5 模型内，由代码注入)。
+const adminRoleCode = "admin"
+
+// seedRoleDesc m5 roles[].roleId → 角色说明列(m5 只给 roleId/name/permissions，说明是展示文案)。
+var seedRoleDesc = map[string]string{
+	"admin":       "系统内置超级管理员",
+	"IGN-ROLE-01": "交付版本编目与上架、执行机注册与引导、任务提交与取消(M5 ACTOR-IGN-ROLE-01)",
+	"IGN-ROLE-02": "运行参数维护、TLS 降级声明、审批执行机强制注销(M5 ACTOR-IGN-ROLE-02)",
+	"IGN-ROLE-03": "交付执行域全过程取证;全部菜单只读可见(零写操作)(M5 ACTOR-IGN-ROLE-03)",
+	"IGN-ROLE-04": "目录/台账/日志只读查询(M5 ACTOR-IGN-ROLE-04)",
+	"IGN-ROLE-05": "服务身份(非岗位):引导回连/跨中心视图/任务回执(M5 ACTOR-IGN-ROLE-05)",
 }
 
-// seedIgnPermissions 业务权限(FUNC-01..33 与 M5 PERM-FUNC-xx 一一对应;权限码 = ign:FUNC-xx)。
-var seedIgnPermissions = []struct{ Code, Name, TargetRef string }{
-	{"ign:FUNC-01", "版本登记", "FUNC-01"},
-	{"ign:FUNC-02", "版本登记信息修改", "FUNC-02"},
-	{"ign:FUNC-03", "触发发行包下载", "FUNC-03"},
-	{"ign:FUNC-04", "版本归档", "FUNC-04"},
-	{"ign:FUNC-05", "版本软删除", "FUNC-05"},
-	{"ign:FUNC-06", "版本列表查询", "FUNC-06"},
-	{"ign:FUNC-07", "版本详情查询", "FUNC-07"},
-	{"ign:FUNC-08", "跨中心版本查询（集群创建视图）", "FUNC-08"},
-	{"ign:FUNC-09", "触发镜像预推", "FUNC-09"},
-	{"ign:FUNC-10", "镜像清单人工覆写", "FUNC-10"},
-	{"ign:FUNC-11", "预推失败重试（断点续推）", "FUNC-11"},
-	{"ign:FUNC-12", "预推明细查询", "FUNC-12"},
-	{"ign:FUNC-13", "注册远程执行机", "FUNC-13"},
-	{"ign:FUNC-14", "重新生成引导令牌（含锁定解锁）", "FUNC-14"},
-	{"ign:FUNC-15", "执行机注销（空闲）", "FUNC-15"},
-	{"ign:FUNC-16", "执行机能力标签调整", "FUNC-16"},
-	{"ign:FUNC-17", "执行机列表查询（含健康视图）", "FUNC-17"},
-	{"ign:FUNC-18", "执行机详情查询", "FUNC-18"},
-	{"ign:FUNC-19", "跨中心执行机查询（集群创建视图）", "FUNC-19"},
-	{"ign:FUNC-20", "手动触发证书续期", "FUNC-20"},
-	{"ign:FUNC-21", "TLS 显式降级声明（实验环境）", "FUNC-21"},
-	{"ign:FUNC-22", "证书绑定清单查询（含临期视图）", "FUNC-22"},
-	{"ign:FUNC-23", "提交执行任务", "FUNC-23"},
-	{"ign:FUNC-24", "取消执行任务", "FUNC-24"},
-	{"ign:FUNC-25", "任务台账查询", "FUNC-25"},
-	{"ign:FUNC-26", "任务详情查询", "FUNC-26"},
-	{"ign:FUNC-27", "任务日志查询（中继回流视图）", "FUNC-27"},
-	{"ign:FUNC-28", "对账与纠偏台账查询", "FUNC-28"},
-	{"ign:FUNC-29", "统计总览查询", "FUNC-29"},
-	{"ign:FUNC-30", "运行参数维护", "FUNC-30"},
-	{"ign:FUNC-31", "强制注销 · 提交申请", "FUNC-31"},
-	{"ign:FUNC-32", "强制注销 · 通过", "FUNC-32"},
-	{"ign:FUNC-33", "强制注销 · 驳回", "FUNC-33"},
-	// v1.1 交付门面四件套（M5 PERM-FUNC-34~37；权限码 = ign:FUNC-xx）
-	{"ign:FUNC-34", "交付门面 · 任务受理", "FUNC-34"},
-	{"ign:FUNC-35", "交付门面 · 回执与增量日志", "FUNC-35"},
-	{"ign:FUNC-36", "交付门面 · 任务撤销", "FUNC-36"},
-	{"ign:FUNC-37", "门面受理台账查询", "FUNC-37"},
+// sortedKeys map 键升序切片(种子入库顺序稳定，结果可复算)。
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// seedPerm m5 permissions[] 对应的一行 sys_permission。
+type seedPerm struct {
+	Code, Name, TargetType, TargetRef, DataScope string
+}
+
+// buildSeedPermissions 由本体注册表展开 m5 permissions 全集，权限名取 m2 行为名。
+// 模型是唯一语义来源:m5 增删权限码只改 YAML。此前此处硬编码 37 条权限名，
+// 与 m5 的条数/口径各改各的，是种子漂移的源头。
+func buildSeedPermissions() []seedPerm {
+	reg := ontology.Load()
+	out := make([]seedPerm, 0, len(reg.Permissions))
+	for _, p := range reg.Permissions {
+		ref := Str(p["targetRef"])
+		name := ref
+		if b, ok := reg.Behaviors[ref]; ok {
+			name = Str(b["name"])
+		}
+		tt := Str(p["targetType"])
+		if tt == "" {
+			tt = "BEHAVIOR"
+		}
+		scope := Str(p["dataScope"])
+		if scope == "" {
+			scope = "ALL"
+		}
+		out = append(out, seedPerm{
+			Code:       bizPermPrefix + ":" + ref,
+			Name:       name,
+			TargetType: tt,
+			TargetRef:  ref,
+			DataScope:  scope,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out
+}
+
+// m5RoleNames m5 roles[].roleId → name，并补 admin 超管位。
+func m5RoleNames() map[string]string {
+	reg := ontology.Load()
+	out := make(map[string]string, len(reg.Roles)+1)
+	for id, role := range reg.Roles {
+		out[id] = Str(role["name"])
+	}
+	out[adminRoleCode] = "系统管理员"
+	return out
+}
+
+// buildSeedRolePermissions m5 roles[].permissions 全量映射成运行期权限码
+// (admin 超管位无模型行，不参与绑定;PERM-FUNC-nn 按 m5 permissions[] 换回 ign:FUNC-nn)。
+func buildSeedRolePermissions() map[string][]string {
+	reg := ontology.Load()
+	out := make(map[string][]string, len(reg.Roles))
+	for id, role := range reg.Roles {
+		var codes []string
+		if list, ok := role["permissions"].([]any); ok {
+			for _, v := range list {
+				pc := Str(v)
+				ref := Str(reg.Permissions[pc]["targetRef"])
+				codes = append(codes, bizPermPrefix+":"+ref)
+			}
+		}
+		sort.Strings(codes)
+		out[id] = codes
+	}
+	return out
 }
 
 // seedPermissions 平台权限(管理控制台/流程引擎;fork 保留)。
@@ -156,36 +203,138 @@ var seedUsers = []struct{ Username, Password, RealName, RoleCode string }{
 	{"ignviewer", "admin123", "交付只读用户", "IGN-ROLE-04"},
 }
 
-// seedRolePermissions 角色→权限(M5 roles[].permissions;admin 超管位由代码层注入,不落数据)。
-var seedRolePermissions = map[string][]string{
-	"IGN-ROLE-01": {
-		"ign:FUNC-01", "ign:FUNC-02", "ign:FUNC-03", "ign:FUNC-04", "ign:FUNC-05",
-		"ign:FUNC-06", "ign:FUNC-07", "ign:FUNC-09", "ign:FUNC-10", "ign:FUNC-11", "ign:FUNC-12",
-		"ign:FUNC-13", "ign:FUNC-14", "ign:FUNC-15", "ign:FUNC-16", "ign:FUNC-17", "ign:FUNC-18",
-		"ign:FUNC-20", "ign:FUNC-22",
-		"ign:FUNC-23", "ign:FUNC-24", "ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27",
-		"ign:FUNC-29", "ign:FUNC-31", "ign:FUNC-37",
-	},
-	"IGN-ROLE-02": {
-		"ign:FUNC-06", "ign:FUNC-07", "ign:FUNC-12", "ign:FUNC-17", "ign:FUNC-18",
-		"ign:FUNC-21", "ign:FUNC-22",
-		"ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-28", "ign:FUNC-29", "ign:FUNC-30",
-		"ign:FUNC-32", "ign:FUNC-33", "ign:FUNC-37",
-	},
-	"IGN-ROLE-03": {
-		"ign:FUNC-06", "ign:FUNC-07", "ign:FUNC-12", "ign:FUNC-17", "ign:FUNC-18",
-		"ign:FUNC-22",
-		"ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-28", "ign:FUNC-29", "ign:FUNC-37",
-	},
-	"IGN-ROLE-04": {
-		"ign:FUNC-06", "ign:FUNC-07", "ign:FUNC-12", "ign:FUNC-17", "ign:FUNC-18",
-		"ign:FUNC-22", "ign:FUNC-25", "ign:FUNC-26", "ign:FUNC-27", "ign:FUNC-29", "ign:FUNC-37",
-	},
-	// IGN-ROLE-05 执行机代理 + 下游中心服务身份（M5 注释：门面三接口复用此格、不新增角色）
-	"IGN-ROLE-05": {
-		"ign:FUNC-08", "ign:FUNC-19", "ign:FUNC-23",
-		"ign:FUNC-34", "ign:FUNC-35", "ign:FUNC-36",
-	},
+// ensureRoleID 幂等取角色 id:先按 code 命中，其次按 name 命中并把 code 补成模型口径。
+// goose 的 m5 种子迁移(000006_m5_seed.sql)与 EnsureSeed 写的是同一组 (code, name)，
+// 两条路径谁先跑都不能撞 sys_role 的 name/code UNIQUE。
+func ensureRoleID(code, name, desc string) (int64, error) {
+	row, err := qOne(`SELECT id FROM sys_role WHERE code = ?`, code)
+	if err != nil {
+		return 0, err
+	}
+	if row != nil {
+		return toInt(row["id"]), nil
+	}
+	row, err = qOne(`SELECT id FROM sys_role WHERE name = ?`, name)
+	if err != nil {
+		return 0, err
+	}
+	if row != nil {
+		id := toInt(row["id"])
+		if _, err := qExec(`UPDATE sys_role SET code = ? WHERE id = ?`, code, id); err != nil {
+			return 0, err
+		}
+		return id, nil
+	}
+	if _, err := qExec(`INSERT INTO sys_role (name, code, parent_id, description, status) VALUES (?, ?, 0, ?, 1)`,
+		name, code, desc); err != nil {
+		return 0, err
+	}
+	row, err = qOne(`SELECT id FROM sys_role WHERE code = ?`, code)
+	if err != nil {
+		return 0, err
+	}
+	if row == nil {
+		return 0, fmt.Errorf("角色入库后未取到 id: %s", code)
+	}
+	return toInt(row["id"]), nil
+}
+
+// ensurePermissionID 幂等取权限 id，并把已有行校正回 m5/m2 口径。
+// 校正不可省:goose 的 m5 种子迁移曾把权限码写成 m5 permissionId(PERM-FUNC-nn)、target_ref 也写成码本身，
+// 而运行期鉴权用的是 ign:FUNC-nn + target_ref=FUNC-nn;只 INSERT 不校正，存量库会一直带着错值。
+func ensurePermissionID(p seedPerm) (int64, error) {
+	row, err := qOne(`SELECT id, name, target_type, target_ref, data_scope FROM sys_permission WHERE code = ?`, p.Code)
+	if err != nil {
+		return 0, err
+	}
+	if row != nil {
+		id := toInt(row["id"])
+		if Str(row["target_ref"]) == p.TargetRef && Str(row["target_type"]) == p.TargetType &&
+			Str(row["name"]) == p.Name && Str(row["data_scope"]) == p.DataScope {
+			return id, nil
+		}
+		if _, err := qExec(`
+			UPDATE sys_permission SET name = ?, target_type = ?, target_ref = ?, data_scope = ? WHERE id = ?`,
+			p.Name, p.TargetType, p.TargetRef, p.DataScope, id); err != nil {
+			return 0, err
+		}
+		return id, nil
+	}
+	if _, err := qExec(`
+		INSERT INTO sys_permission (code, name, target_type, target_ref, data_scope, status)
+		VALUES (?, ?, ?, ?, ?, 1)`, p.Code, p.Name, p.TargetType, p.TargetRef, p.DataScope); err != nil {
+		return 0, err
+	}
+	row, err = qOne(`SELECT id FROM sys_permission WHERE code = ?`, p.Code)
+	if err != nil {
+		return 0, err
+	}
+	if row == nil {
+		return 0, fmt.Errorf("权限入库后未取到 id: %s", p.Code)
+	}
+	return toInt(row["id"]), nil
+}
+
+// ensureRolePermission 幂等绑定角色-权限。
+func ensureRolePermission(roleID, permID int64) error {
+	row, err := qOne(`SELECT role_id FROM sys_role_permission WHERE role_id = ? AND permission_id = ?`, roleID, permID)
+	if err != nil || row != nil {
+		return err
+	}
+	_, err = qExec(`INSERT INTO sys_role_permission (role_id, permission_id) VALUES (?, ?)`, roleID, permID)
+	return err
+}
+
+// syncM5Authorization m5 角色/权限/角色权限绑定入库(幂等)，返回角色码 → id。
+// 空库首建与存量库回填共用这一条路径:m5 加行为发牌只改 YAML，种子自己跟上，
+// 与 goose 的 m5 种子迁移互为重复执行。
+func syncM5Authorization() (map[string]int64, error) {
+	names := m5RoleNames()
+	roleIDs := map[string]int64{}
+	for _, code := range sortedKeys(names) {
+		id, err := ensureRoleID(code, names[code], seedRoleDesc[code])
+		if err != nil {
+			return nil, err
+		}
+		roleIDs[code] = id
+	}
+	permIDs := map[string]int64{}
+	for _, p := range buildSeedPermissions() {
+		id, err := ensurePermissionID(p)
+		if err != nil {
+			return nil, err
+		}
+		permIDs[p.Code] = id
+	}
+	bindings := buildSeedRolePermissions()
+	for _, roleCode := range sortedKeys(bindings) {
+		roleID, ok := roleIDs[roleCode]
+		if !ok {
+			continue
+		}
+		for _, pc := range bindings[roleCode] {
+			permID, ok := permIDs[pc]
+			if !ok {
+				return nil, fmt.Errorf("角色 %s 绑定的 %s 不在 m5 permissions 全集", roleCode, pc)
+			}
+			if err := ensureRolePermission(roleID, permID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return roleIDs, nil
+}
+
+// syncPlatformPermissions 平台权限(控制台/流程引擎;不在 m5 模型内，fork 自带口径)。
+func syncPlatformPermissions() error {
+	for _, p := range seedPermissions {
+		if err := ensureRow("sys_permission", "code", p.Code,
+			`INSERT INTO sys_permission (code, name, target_type, target_ref, data_scope, status)
+			 VALUES (?, ?, ?, ?, 'ALL', 1)`, p.Code, p.Name, p.TargetType, p.TargetRef); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ensureAdminRole 内置超管角色(代码层 GetPermissionCodes 对 code=admin 注入 "*";幂等)。
@@ -226,58 +375,31 @@ func ensureRow(table, keyCol string, keyExpr any, insertSQL string, args ...any)
 	return err
 }
 
-// EnsureSeed 种子(幂等;users 非空则补齐超管角色与流程定义)。
+// EnsureSeed 种子(幂等)。权限矩阵(角色/权限/发牌)两条路径都按 m5+m2 模型同步一次，
+// 空库再补菜单、账号与流程定义。
 func EnsureSeed() error {
 	count, err := qCount(`SELECT COUNT(*) FROM sys_user`)
 	if err != nil {
+		return err
+	}
+	// 权限矩阵(m5 + 平台权限):空库与存量库同一条路径
+	roleIDs, err := syncM5Authorization()
+	if err != nil {
+		return err
+	}
+	if err := syncPlatformPermissions(); err != nil {
 		return err
 	}
 	if count > 0 {
 		if err := ensureAdminRole(); err != nil {
 			return err
 		}
-		// 存量库幂等回填：v1.1 新增的权限矩阵/配置键/LOCAL 执行机/门面服务账号
-		// （EnsureSeed 主路径只在空库执行，不回填则新接口直接 403、执行位无从登记）
+		// 存量库幂等回填:配置键/LOCAL 执行机/门面服务账号
+		// （EnsureSeed 主路径只在空库执行，不回填则执行位无从登记）
 		if err := backfillIgnSeed(); err != nil {
 			return err
 		}
 		return ensureFlowDefinitions()
-	}
-	// 角色
-	roleIDs := map[string]int64{}
-	for _, r := range seedRoles {
-		if _, err := qExec(`INSERT INTO sys_role (name, code, parent_id, description, status) VALUES (?, ?, 0, ?, 1)`,
-			r.Name, r.Code, r.Desc); err != nil {
-			return err
-		}
-		row, err := qOne(`SELECT id FROM sys_role WHERE code = ?`, r.Code)
-		if err != nil {
-			return err
-		}
-		roleIDs[r.Code] = toInt(row["id"])
-	}
-	// 权限:平台权限 + ignition 业务权限(INSERT 列序与值序对齐)
-	for _, p := range seedPermissions {
-		if _, err := qExec(`
-			INSERT INTO sys_permission (code, name, target_type, target_ref, data_scope, status)
-			VALUES (?, ?, ?, ?, 'ALL', 1)`, p.Code, p.Name, p.TargetType, p.TargetRef); err != nil {
-			return err
-		}
-	}
-	for _, p := range seedIgnPermissions {
-		if _, err := qExec(`
-			INSERT INTO sys_permission (code, name, target_type, target_ref, data_scope, status)
-			VALUES (?, ?, 'BEHAVIOR', ?, 'ALL', 1)`, p.Code, p.Name, p.TargetRef); err != nil {
-			return err
-		}
-	}
-	perms, err := qList(`SELECT id, code FROM sys_permission`)
-	if err != nil {
-		return err
-	}
-	permIDByCode := map[string]any{}
-	for _, p := range perms {
-		permIDByCode[Str(p["code"])] = p["id"]
 	}
 	// 资源/菜单
 	resIDs := map[string]int64{}
@@ -309,16 +431,6 @@ func EnsureSeed() error {
 		uid := toInt(row["id"])
 		if _, err := qExec(`INSERT INTO sys_user_role (user_id, role_id) VALUES (?, ?)`, uid, roleIDs[u.RoleCode]); err != nil {
 			return err
-		}
-	}
-	// 角色权限(admin 超管位由 GetPermissionCodes 代码层注入,不落数据)
-	for roleCode, permCodes := range seedRolePermissions {
-		roleID := roleIDs[roleCode]
-		for _, pc := range permCodes {
-			if _, err := qExec(`INSERT INTO sys_role_permission (role_id, permission_id) VALUES (?, ?)`,
-				roleID, permIDByCode[pc]); err != nil {
-				return err
-			}
 		}
 	}
 	// 运行参数缺省(REF-*;FUNC-30 可维护)——只在缺失时落缺省值，不覆盖运维改过的值
@@ -391,54 +503,9 @@ func ensureFlowDefinitions() error {
 	return nil
 }
 
-// backfillIgnSeed 存量库幂等回填（模型是唯一语义来源：M5 v1.1 新增的权限矩阵必须在存量库同样入库，
-// 否则门面接口在 perm() 处直接 403；配置键、LOCAL 执行机与门面服务账号同理）。
+// backfillIgnSeed 存量库幂等回填（权限矩阵已由 syncM5Authorization 在两条路径上统一入库，
+// 这里只剩本域特有的:菜单入口口径纠正、运行参数缺省、LOCAL 执行机与门面服务账号）。
 func backfillIgnSeed() error {
-	for _, p := range seedIgnPermissions {
-		exists, err := qOne(`SELECT id FROM sys_permission WHERE code = ?`, p.Code)
-		if err != nil {
-			return err
-		}
-		if exists != nil {
-			continue
-		}
-		if _, err := qExec(`
-			INSERT INTO sys_permission (code, name, target_type, target_ref, data_scope, status)
-			VALUES (?, ?, 'BEHAVIOR', ?, 'ALL', 1)`, p.Code, p.Name, p.TargetRef); err != nil {
-			return err
-		}
-	}
-	for _, r := range seedRoles {
-		if err := ensureRow("sys_role", "code", r.Code,
-			`INSERT INTO sys_role (name, code, parent_id, description, status) VALUES (?, ?, 0, ?, 1)`,
-			r.Name, r.Code, r.Desc); err != nil {
-			return err
-		}
-	}
-	for roleCode, permCodes := range seedRolePermissions {
-		role, err := qOne(`SELECT id FROM sys_role WHERE code = ?`, roleCode)
-		if err != nil || role == nil {
-			return err
-		}
-		for _, pc := range permCodes {
-			perm, err := qOne(`SELECT id FROM sys_permission WHERE code = ?`, pc)
-			if err != nil || perm == nil {
-				return err
-			}
-			bound, err := qCount(`
-				SELECT COUNT(*) FROM sys_role_permission WHERE role_id = ? AND permission_id = ?`,
-				toInt(role["id"]), toInt(perm["id"]))
-			if err != nil {
-				return err
-			}
-			if bound == 0 {
-				if _, err := qExec(`INSERT INTO sys_role_permission (role_id, permission_id) VALUES (?, ?)`,
-					toInt(role["id"]), toInt(perm["id"])); err != nil {
-					return err
-				}
-			}
-		}
-	}
 	// 菜单入口口径纠正：旧种子把 /ign/log 挂在 FUNC-28（三页签之一的权限），交付管理员与只读岗位
 	// 有数据权限却无侧栏入口；只纠正"仍是旧口径"的行，运维自定义过的一律不动。
 	if _, err := qExec(`UPDATE sys_resource SET permission_code = ? WHERE code = ? AND permission_code = ?`,

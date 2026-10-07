@@ -130,7 +130,8 @@ var seedResources = []struct {
 	{"menu-ign-delivery", "执行机", "menu-ign-executor", "ign:FUNC-17", "MENU", "/ign/executor", "Cluster", 13},
 	{"menu-ign-delivery", "通道安全", "menu-ign-tls", "ign:FUNC-22", "MENU", "/ign/tls", "SafetyCertificate", 14},
 	{"menu-ign-delivery", "任务桥接", "menu-ign-task", "ign:FUNC-25", "MENU", "/ign/task", "Thunderbolt", 15},
-	{"menu-ign-delivery", "日志与对账", "menu-ign-log", "ign:FUNC-28", "MENU", "/ign/log", "FileText", 16},
+	// 入口门禁取页面主数据接口 FUNC-25（三页签四岗位共有的最小公共面），不取只覆盖单个页签的 FUNC-28。
+	{"menu-ign-delivery", "日志与对账", "menu-ign-log", "ign:FUNC-25", "MENU", "/ign/log", "FileText", 16},
 	// L1 运行观测(mu menu-l1-02)
 	{"", "运行观测", "menu-ign-obs", "", "DIRECTORY", "", "Audit", 20},
 	{"menu-ign-obs", "运行观测", "menu-ign-ops", "ign:FUNC-29", "MENU", "/ign/ops", "Dashboard", 21},
@@ -320,9 +321,9 @@ func EnsureSeed() error {
 			}
 		}
 	}
-	// 运行参数缺省(REF-*;FUNC-30 可维护)
+	// 运行参数缺省(REF-*;FUNC-30 可维护)——只在缺失时落缺省值，不覆盖运维改过的值
 	for _, c := range defaultIgnConfigs() {
-		if err := upsertIgnConfig(store.DB, c.Key, c.Value, c.Desc, 1); err != nil {
+		if err := seedIgnConfigIfAbsent(store.DB, c.Key, c.Value, c.Desc, 1); err != nil {
 			return err
 		}
 	}
@@ -438,15 +439,15 @@ func backfillIgnSeed() error {
 			}
 		}
 	}
+	// 菜单入口口径纠正：旧种子把 /ign/log 挂在 FUNC-28（三页签之一的权限），交付管理员与只读岗位
+	// 有数据权限却无侧栏入口；只纠正"仍是旧口径"的行，运维自定义过的一律不动。
+	if _, err := qExec(`UPDATE sys_resource SET permission_code = ? WHERE code = ? AND permission_code = ?`,
+		"ign:FUNC-25", "menu-ign-log", "ign:FUNC-28"); err != nil {
+		return err
+	}
 	for _, c := range defaultIgnConfigs() {
-		v, err := ignConfigGet(store.DB, c.Key)
-		if err != nil {
+		if err := seedIgnConfigIfAbsent(store.DB, c.Key, c.Value, c.Desc, 1); err != nil {
 			return err
-		}
-		if strings.TrimSpace(v) == "" {
-			if err := upsertIgnConfig(store.DB, c.Key, c.Value, c.Desc, 1); err != nil {
-				return err
-			}
 		}
 	}
 	if err := EnsureLocalExecutor(); err != nil {
@@ -468,11 +469,11 @@ func EnsureFacadeServiceUser() error {
 	}
 	if row == nil {
 		uid, err := CreateUser(map[string]any{
-			"username":  name,
-			"password":  "facade-managed:" + auth.NewState(),
-			"real_name": "交付门面服务身份（O-CLC 等下游中心）",
+			"username":   name,
+			"password":   "facade-managed:" + auth.NewState(),
+			"real_name":  "交付门面服务身份（O-CLC 等下游中心）",
 			"actor_type": "SERVICE",
-			"status":    float64(1),
+			"status":     float64(1),
 		})
 		if err != nil {
 			return err

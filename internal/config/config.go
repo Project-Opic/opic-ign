@@ -108,7 +108,13 @@ var Config struct {
 		WorkDir     string `yaml:"work_dir"`     // 集群工作目录父目录(可写挂载;缺省 = tool_root)
 		FacadeToken string `yaml:"facade_token"` // 交付门面服务身份令牌(上游中心 Bearer;空 ⇒ 门面关闭)
 		FacadeUser  string `yaml:"facade_user"`  // 门面服务账号(绑 IGN-ROLE-05;缺省 ignition-agent)
-		SSHDir      string `yaml:"ssh_dir"`      // 免密 SSH 私钥目录(路径透传给命令面;内容零出口)
+		SSHDir      string `yaml:"ssh_dir"`      // 免密 SSH 私钥目录(集群交付配置里只出现路径;内容零出口)
+		SSHUser     string `yaml:"ssh_user"`     // 命令面登录节点的用户(空 ⇒ 不注入,沿用执行位进程用户;写入 ansible_ssh_user)
+		SSHKey      string `yaml:"ssh_key"`      // 私钥文件绝对路径(缺省 = ssh_dir/id_rsa;只以路径进 inventory,内容零出口)
+		// HTTPProxy 执行位子进程的出网代理(空 ⇒ 不带代理)。
+		// 只由本段显式配置:进程环境的代理**不透传**给执行位 —— 代理会吞掉
+		// ansible 对集群内网(节点/Service/Pod 网段、本地仓库域名)的访问,表现为 32s 超时(见 ignToolEnv)。
+		HTTPProxy string `yaml:"http_proxy"`
 	} `yaml:"delivery"`
 }
 
@@ -302,6 +308,15 @@ func applyEnvOverrides() {
 	}
 	if v := os.Getenv("IGN_DELIVERY_SSH_DIR"); v != "" {
 		Config.Delivery.SSHDir = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_SSH_USER"); v != "" {
+		Config.Delivery.SSHUser = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_SSH_KEY"); v != "" {
+		Config.Delivery.SSHKey = v
+	}
+	if v := os.Getenv("IGN_DELIVERY_HTTP_PROXY"); v != "" {
+		Config.Delivery.HTTPProxy = v
 	}
 	if v := os.Getenv("USER_AUTH_MODE"); v != "" {
 		Config.UserAuth.Mode = v

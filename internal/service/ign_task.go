@@ -676,14 +676,7 @@ func IgnStats() (map[string]any, error) {
 	}
 	out["reconcile_count"] = reconcileTotal
 
-	params := map[string]any{}
-	for _, c := range defaultIgnConfigs() {
-		val, err := ignConfigGet(store.DB, c.Key)
-		if err == nil && val != "" {
-			params[c.Key] = val
-		}
-	}
-	out["params"] = params
+	// 参数面不随统计吐出：REF-* 的可读面只有 FUNC-30 的 GET /api/v1/ign/params（独立读门禁）。
 	return out, nil
 }
 

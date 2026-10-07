@@ -269,7 +269,6 @@ export interface IgnStats {
   // c9 纠偏计数
   correct_count?: Record<string, number>
   reconcile_count: number
-  params: Record<string, string>
 }
 
 export interface IgnParam {

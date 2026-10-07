@@ -1,5 +1,5 @@
 model_type: FLOW
-version: '1.1'
+version: '1.1.1'
 domain: 交付执行域
 flows:
 - id: FLOW-PROC-01
@@ -646,7 +646,7 @@ flows:
   - A15
   activities:
   - activityId: A01
-    name: 上游受理请求：来源任务 + 来源步骤序号 + 步骤编码（+ 节点地址清单）
+    name: 上游受理请求：来源任务 + 来源步骤序号 + 步骤编码（+ 节点清单 / 交付版本引用，按动作族取用）
     activityType: BEHAVIOR_CALL
     behaviorRef: FUNC-34
     nextActivities:
@@ -697,7 +697,7 @@ flows:
     nextActivities:
     - A09
   - activityId: A08
-    name: 新建任务 + 工作目录幂等前置
+    name: 新建任务 + 集群交付配置对齐前置（R-18 三态：接管 / 幂等 / 冲突；冲突或形态不合法即受理拒绝）
     activityType: SYSTEM_TASK
     behaviorRef: B-AUTO-15
     ruleRef: R-17

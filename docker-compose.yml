@@ -20,6 +20,9 @@ networks:
   opic-net:
     external: true
     name: ${DOCKER_NETWORK:-opic-net}
+  # 交付面可达性属部署侧事实：命令面要能 SSH 到集群节点（裁定 Q-68 执行位 = 本容器）。
+  # 节点与平台不同网段时由部署侧把本容器接入节点网段
+  # （3.200 实测：docker network connect opic-k8s-lab opic-ign-app），本文件不预设节点网段名。
 
 services:
   ign:
@@ -60,6 +63,8 @@ services:
       IGN_DELIVERY_TOOL_ROOT: ${IGN_DELIVERY_TOOL_ROOT:-/etc/kubeasz}
       IGN_DELIVERY_WORK_DIR: ${IGN_DELIVERY_WORK_DIR:-}
       IGN_DELIVERY_SSH_DIR: ${IGN_DELIVERY_SSH_DIR:-/opt/opic/ssh}
+      # 命令面登录节点的用户：空 ⇒ 沿用执行位进程用户（容器内为 app，节点通常不授权该用户）
+      IGN_DELIVERY_SSH_USER: ${IGN_DELIVERY_SSH_USER:-}
       IGN_DELIVERY_FACADE_TOKEN: ${IGN_DELIVERY_FACADE_TOKEN:-}
       IGN_DELIVERY_FACADE_USER: ${IGN_DELIVERY_FACADE_USER:-ignition-agent}
       # ── 用户工作台 SSO（OPIC-SSO-01：Casdoor）──

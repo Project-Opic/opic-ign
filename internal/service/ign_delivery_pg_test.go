@@ -7,6 +7,7 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,18 +24,25 @@ import (
 
 func facadeUser() UserInfo { return UserInfo{ID: 1, Username: "facade-tester"} }
 
+// facadeInstallNodes 安装族受理的节点清单：一个控制面（同时进 etcd/kube_master/kube_node，
+// etcd 成员保持奇数）。安装族的交付配置由本域按这份事实派生，清单不进 argv（FUNC-34/Q-72）。
+func facadeInstallNodes() []any {
+	return []any{map[string]any{"addr": "10.99.0.11", "role": "MASTER", "nodename": "clu-m1"}}
+}
+
 // softSQL 清理钩子用的 SQL（t.Cleanup 里不能再 Fatal，失败只由下一次断言暴露）。
 func softSQL(sql string, args ...any) {
 	_ = store.DB.Exec(sql, args...).Error
 }
 
-// facadeToolBody 命令面夹具脚本：new 分支落实 B-AUTO-15 的集群工作目录骨架，
-// 其余子命令由用例给出（argv 契约：<bin> <子命令> <集群> [步骤/地址…]），未知命令 exit 64。
+// facadeToolBody 命令面夹具脚本：new 分支按发行包形态产出 hosts/config.yml（B-AUTO-15
+// 的交付配置打底），其余子命令由用例给出（argv 契约：<bin> <子命令> <集群> [步骤/地址…]），
+// 未知命令 exit 64。
 func facadeToolBody(cases ...string) string {
 	var b strings.Builder
 	b.WriteString(`cmd="$1"; shift`)
 	b.WriteString("\ncase \"$cmd\" in\n")
-	b.WriteString(`  new) mkdir -p "clusters/$1"; echo "ezctl new $1" ;;`)
+	b.WriteString(facadeNewBranch())
 	b.WriteString("\n")
 	for _, c := range cases {
 		b.WriteString(c + "\n")
@@ -139,7 +147,7 @@ func TestFacadeSubmitRunsLocal(t *testing.T) {
 
 	got, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(1),
-		"cluster_ref": cluster, "step_code": "03",
+		"cluster_ref": cluster, "step_code": "03", "nodes": facadeInstallNodes(),
 	}, facadeUser())
 	if err != nil {
 		t.Fatal(err)
@@ -188,15 +196,23 @@ func TestFacadeSubmitRunsLocal(t *testing.T) {
 		t.Errorf("首行应为门面受理注记，实际 %s/%s", Str(logs[0]["direction"]), Str(logs[0]["log_line"]))
 	}
 	var toolLines []string
-	var startNotes int
+	var startNotes, alignNotes int
 	for _, l := range logs[1 : len(logs)-1] {
 		switch Str(l["direction"]) {
 		case "TOOL":
 			toolLines = append(toolLines, Str(l["log_line"]))
 		case "PLATFORM":
+			line := Str(l["log_line"])
+			if strings.Contains(line, "交付配置") {
+				alignNotes++
+				if !strings.Contains(line, "hosts") || !strings.Contains(line, "config.yml") {
+					t.Errorf("交付配置注记未交代两份产物: %q", line)
+				}
+				continue
+			}
 			startNotes++
-			if !strings.Contains(Str(l["log_line"]), "执行位已启动") {
-				t.Errorf("中段平台注记不符: %q", Str(l["log_line"]))
+			if !strings.Contains(line, "执行位已启动") {
+				t.Errorf("中段平台注记不符: %q", line)
 			}
 		default:
 			t.Errorf("流向 %s 不在 IGN_LOG_DIRECTION 内", Str(l["direction"]))
@@ -204,6 +220,9 @@ func TestFacadeSubmitRunsLocal(t *testing.T) {
 	}
 	if startNotes != 1 {
 		t.Errorf("启动注记行数 %d，期望 1", startNotes)
+	}
+	if alignNotes != 1 {
+		t.Errorf("交付配置注记行数 %d，期望 1（B-AUTO-15 的对齐事实必须可读回）", alignNotes)
 	}
 	if strings.Join(toolLines, "|") != "step 03 begin|step 03 done" {
 		t.Errorf("工具输出逐行入库不符: %v", toolLines)
@@ -230,7 +249,7 @@ func TestFacadeSubmitIdempotentReuse(t *testing.T) {
 
 	got, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(7),
-		"cluster_ref": other, "step_code": "02",
+		"cluster_ref": other, "step_code": "02", "nodes": facadeInstallNodes(),
 	}, facadeUser())
 	if err != nil {
 		t.Fatal(err)
@@ -363,6 +382,81 @@ func TestFacadeRequestFieldContract(t *testing.T) {
 	}
 }
 
+// TestFacadeNodeOpsPrecheck 节点增删的受理侧前置（FUNC-34/Q-72 + 真实命令面事实）：
+// 地址须 IPv4（ezctl 硬校验）、须以已对齐的交付配置为前提、在册/不在册在受理侧判 ——
+// 三类都拒绝得掉，才不会出现"任务已登记、执行位在远端才失败"的半途事实。
+func TestFacadeNodeOpsPrecheck(t *testing.T) {
+	requireDB(t)
+	useDeliveryEnv(t, facadeToolBody(
+		`  setup) echo ok; exit 0 ;;`,
+		`  add-node) echo "add $@"; exit 0 ;;`,
+		`  add-nodes) echo "adds $@"; exit 0 ;;`))
+	src := fmt.Sprintf("CLC-NP-%d", nextSeq())
+	trackAudit(t, src)
+	cluster := newCluster(t)
+
+	_, err := DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(1),
+		"cluster_ref": cluster, "action_code": "ezctl.add-node", "nodes": []any{"10.99.0.99"},
+	}, facadeUser())
+	be := assertBizCode(t, err, errcode.ErrState)
+	if !strings.Contains(be.Msg, "hosts") {
+		t.Errorf("无交付配置时的拒绝理由未指出缺什么: %s", be.Msg)
+	}
+
+	// 安装族先落定 inventory（控制面 10.99.0.11 同时进 etcd/kube_master/kube_node）
+	got, err := DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(2),
+		"cluster_ref": cluster, "step_code": "01", "nodes": facadeInstallNodes(),
+	}, facadeUser())
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitTaskStatus(t, Str(got["task_no"]), "COMPLETED")
+
+	// 新地址不在册 ⇒ 受理（本域不预写 hosts：sed 进工作组是命令面自己的事）
+	// 上游类别名走 step_code 列（R-13 私有映射：CLC_TASK_KIND 词汇由被调用方解析）
+	got2, err := DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(3),
+		"cluster_ref": cluster, "step_code": "ADD_NODE", "nodes": []any{"10.99.0.99"},
+	}, facadeUser())
+	if err != nil {
+		t.Fatalf("不在册地址的加节点应受理: %v", err)
+	}
+	waitTaskStatus(t, Str(got2["task_no"]), "COMPLETED")
+	if _, err := os.Stat(filepath.Join(config.Config.Delivery.WorkDir, "clusters", cluster, "hosts")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(4),
+		"cluster_ref": cluster, "action_code": "ezctl.add-node", "nodes": []any{"10.99.0.11"},
+	}, facadeUser())
+	be = assertBizCode(t, err, errcode.ErrForbidden)
+	if !strings.Contains(be.Msg, "已在") || !strings.Contains(be.Msg, "kube_node") {
+		t.Errorf("在册地址的拒绝理由不符: %s", be.Msg)
+	}
+
+	_, err = DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(5),
+		"cluster_ref": cluster, "action_code": "ezctl.add-node", "nodes": []any{"node-a.example.com"},
+	}, facadeUser())
+	be = assertBizCode(t, err, errcode.ErrForbidden)
+	if !strings.Contains(be.Msg, "IPv4") {
+		t.Errorf("主机名地址的拒绝理由不符: %s", be.Msg)
+	}
+
+	if n := countRows(t, `SELECT COUNT(*) FROM exec_task WHERE flag = 1 AND source_task_no = ?`, src); n != 2 {
+		t.Errorf("任务行 %d 行，期望 2 行（两次拒绝不留半成品事实）", n)
+	}
+	if n := len(auditRows(t, ignEvtGovernanceRefuse, src)); n != 2 {
+		t.Errorf("受理侧拒绝留痕 %d 条，期望 2 条（REP-13 可数）", n)
+	}
+	if n := len(auditRows(t, ignEvtToolUnavailable, src)); n != 1 {
+		t.Errorf("交付配置缺失的拒绝留痕 %d 条，期望 1 条", n)
+	}
+}
+
 // TestFacadeToolUnavailable R-15（Z2）：命令面挂载缺失即受理即刻拒绝，不建任务行、
 // 不转入其他执行位，留痕事件与治理拒绝分列。
 func TestFacadeToolUnavailable(t *testing.T) {
@@ -396,42 +490,189 @@ func TestFacadeToolUnavailable(t *testing.T) {
 	}
 }
 
-// TestFacadeWorkDirPreStep B-AUTO-15：安装首步（01）受理时幂等对齐集群工作目录，
-// 非首步不做该前置（权威在 O-CLC 的步骤状态机，INV-36）。
-func TestFacadeWorkDirPreStep(t *testing.T) {
+// TestFacadeDeliveryConfigPrecondition B-AUTO-15：安装族受理时按登记事实产出现实可用的
+// 交付配置（hosts/config.yml + 接管标记）；已对齐可沿用、未对齐且无清单即拒绝、
+// 非本域产物拒绝接管且不改动（步骤序号权威在 O-CLC，Q-69；配置事实权威在受理侧）。
+func TestFacadeDeliveryConfigPrecondition(t *testing.T) {
 	requireDB(t)
 	root := useDeliveryEnv(t, facadeToolBody(`  setup) echo "setup $1 $2"; exit 0 ;;`))
 	src := fmt.Sprintf("CLC-WD-%d", nextSeq())
+	trackAudit(t, src)
 	cluster := newCluster(t)
 	dir := filepath.Join(root, "clusters", cluster)
 	if ignDirExists(dir) {
-		t.Fatal("夹具集群目录预先存在，用例无法验证幂等前置")
+		t.Fatal("夹具集群目录预先存在，用例无法验证交付配置前置")
 	}
 
 	got, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(1),
-		"cluster_ref": cluster, "step_code": "01",
+		"cluster_ref": cluster, "step_code": "01", "nodes": facadeInstallNodes(),
 	}, facadeUser())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ignDirExists(dir) {
-		t.Errorf("安装首步未对齐集群工作目录: %s（B-AUTO-15）", dir)
+	// 受理即刻产出的必须是"命令面直接可用"的两份配置，不是空目录
+	hosts, err := os.ReadFile(filepath.Join(dir, "hosts"))
+	if err != nil {
+		t.Fatalf("安装首步未生成交付配置: %v（B-AUTO-15）", err)
+	}
+	if strings.Contains(string(hosts), "_cluster_name_") || !strings.Contains(string(hosts), "10.99.0.11") {
+		t.Errorf("hosts 未按登记事实生成:\n%s", hosts)
+	}
+	conf, err := os.ReadFile(filepath.Join(dir, "config.yml"))
+	if err != nil || !strings.Contains(string(conf), `CLUSTER_NAME: "`+cluster+`"`) {
+		t.Errorf("config.yml 未按登记标识改写: err=%v", err)
 	}
 	waitTaskStatus(t, Str(got["task_no"]), "COMPLETED")
 
-	cluster2 := newCluster(t)
+	// 后续步骤不带清单 ⇒ 沿用已对齐配置（重试/续派场景；配置归属由接管标记判定）
 	got2, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(2),
-		"cluster_ref": cluster2, "step_code": "05",
+		"cluster_ref": cluster, "step_code": "05",
 	}, facadeUser())
 	if err != nil {
-		t.Fatal(err)
-	}
-	if ignDirExists(filepath.Join(root, "clusters", cluster2)) {
-		t.Error("非首步不应执行建骨架前置（步骤状态机权威在 O-CLC，Q-69）")
+		t.Fatalf("已对齐集群的后续步骤应受理: %v", err)
 	}
 	waitTaskStatus(t, Str(got2["task_no"]), "COMPLETED")
+
+	// 配置未对齐又不带清单 ⇒ 受理即刻拒绝（不建任务行、不产出空目录）
+	cluster3 := newCluster(t)
+	_, err = DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(3),
+		"cluster_ref": cluster3, "step_code": "03",
+	}, facadeUser())
+	be := assertBizCode(t, err, errcode.ErrState)
+	if !strings.Contains(be.Msg, "未带节点清单") {
+		t.Errorf("拒绝理由未说明缺什么: %s", be.Msg)
+	}
+	if ignDirExists(filepath.Join(root, "clusters", cluster3)) {
+		t.Error("拒绝受理却产出了集群目录（Z1：拒绝不留半成品事实）")
+	}
+	if n := countRows(t, `SELECT COUNT(*) FROM exec_task WHERE flag = 1 AND source_task_no = ? AND source_step_index = 3`, src); n != 0 {
+		t.Errorf("拒绝却建了任务行: %d", n)
+	}
+	if len(auditRows(t, ignEvtToolUnavailable, src)) != 1 {
+		t.Error("交付配置未对齐的拒绝须落受理侧留痕（REP-13）")
+	}
+
+	// 非本域派生的配置（人工/其他工具产出）⇒ 拒绝接管，且一字不改
+	cluster4 := newCluster(t)
+	dir4 := filepath.Join(root, "clusters", cluster4)
+	if err := os.MkdirAll(dir4, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manualHosts := "[etcd]\n1.2.3.4\n"
+	if err := os.WriteFile(filepath.Join(dir4, "hosts"), []byte(manualHosts), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir4, "config.yml"), []byte("CLUSTER_NAME: \"manual\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(4),
+		"cluster_ref": cluster4, "step_code": "01", "nodes": facadeInstallNodes(),
+	}, facadeUser())
+	be = assertBizCode(t, err, errcode.ErrState)
+	if !strings.Contains(be.Msg, "非本域") {
+		t.Errorf("接管判定不符: %s", be.Msg)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir4, "hosts")); string(b) != manualHosts {
+		t.Error("拒绝接管却改写了人工产出的配置")
+	}
+}
+
+// ---------- R-19 交付版本引用的可用性门槛 ----------
+
+// insertFacadeVersion 建一条用例专属交付版本（装置共用一库；版本名唯一索引只约束未归档行，
+// 故按状态取名即可）。cache_path 守 INV-06：仅就绪 / 预推系列状态非空。
+func insertFacadeVersion(t *testing.T, status, orchestrator, cni string) string {
+	t.Helper()
+	seq := nextSeq()
+	versionNo := fmt.Sprintf("VER-TEST-%08d", seq)
+	name := fmt.Sprintf("t%d-%s", seq, strings.ToLower(status))
+	cache := ""
+	switch status {
+	case "READY", "PREPUSHING", "PREPUSHED", "PARTIALLY_PREPUSHED", "ARCHIVED":
+		cache = "/cache/opic/" + name
+	}
+	mustSQL(t, `
+		INSERT INTO delivery_version
+			(version_no, name, tool_version, orchestrator_version, runtime_version, etcd_version,
+			 cni_plugin, cni_version, coredns_version, tarball_url, image_manifest, cache_path,
+			 version_status, created_by)
+		VALUES (?, ?, '3.7.0', ?, '2.2.1', '3.7.1', ?, 'v0.28.9', '1.14.6',
+		        'https://repo.invalid/kubeasz.tar.gz', '[]', ?, ?, 1)`,
+		versionNo, name, orchestrator, cni, cache, status)
+	t.Cleanup(func() { softSQL(`DELETE FROM delivery_version WHERE version_no = ?`, versionNo) })
+	return name
+}
+
+// TestVersionRefProfileDerivation R-19 正面：就绪版本放行，且版本登记的组件面覆盖参数缺省面。
+func TestVersionRefProfileDerivation(t *testing.T) {
+	requireDB(t)
+	name := insertFacadeVersion(t, "READY", "v1.31.9", "FLANNEL")
+	p, err := ignProfileForAction(name)
+	if err != nil {
+		t.Fatalf("就绪版本应可被交付引用: %v", err)
+	}
+	if p.K8sVersion != "1.31.9" {
+		t.Errorf("编排引擎版本未按版本登记派生: %q", p.K8sVersion)
+	}
+	if p.NetworkPlugin != "flannel" {
+		t.Errorf("CNI 插件未按版本登记派生: %q", p.NetworkPlugin)
+	}
+}
+
+// TestVersionRefAvailabilityGate R-19 反面：草稿 / 下载中 / 失败 / 已归档的版本都在目录里，
+// 但不可被交付引用 —— 组件版本面尚未登记完成就派生参数，等于把空版本号带进装机现场。
+func TestVersionRefAvailabilityGate(t *testing.T) {
+	requireDB(t)
+	for _, c := range []struct{ status, label string }{
+		{"DRAFT", "草稿"},
+		{"DOWNLOADING", "下载中"},
+		{"FAILED", "失败"},
+		{"ARCHIVED", "已归档"},
+	} {
+		name := insertFacadeVersion(t, c.status, "v1.31.9", "FLANNEL")
+		_, err := ignProfileForAction(name)
+		be := assertBizCode(t, err, errcode.ErrForbidden)
+		if !strings.Contains(be.Msg, c.label) || !strings.Contains(be.Msg, "R-19") {
+			t.Errorf("%s 版本的拒绝理由不符: %s", c.status, be.Msg)
+		}
+	}
+
+	_, err := ignProfileForAction("VER-TEST-NOT-REGISTERED")
+	be := assertBizCode(t, err, errcode.ErrForbidden)
+	if !strings.Contains(be.Msg, "无登记") {
+		t.Errorf("未登记版本应走可解析口径（INV-33）: %s", be.Msg)
+	}
+}
+
+// TestFacadeSubmitRefusesUnavailableVersion 门面端到端：不可用版本 ⇒ 治理拒绝 + 受理侧留痕，
+// 且不落半成品任务（与 R-12 / R-13 同族）。
+func TestFacadeSubmitRefusesUnavailableVersion(t *testing.T) {
+	requireDB(t)
+	useDeliveryEnv(t, facadeToolBody(`  setup) echo "setup $1 $2"; exit 0 ;;`))
+	src := fmt.Sprintf("CLC-VG-%d", nextSeq())
+	trackAudit(t, src)
+	cluster := newCluster(t)
+	name := insertFacadeVersion(t, "DRAFT", "v1.31.9", "FLANNEL")
+
+	_, err := DeliverySubmit(map[string]any{
+		"source_task_no": src, "source_step_index": int64(1),
+		"cluster_ref": cluster, "step_code": "01",
+		"nodes": facadeInstallNodes(), "version_ref": name,
+	}, facadeUser())
+	be := assertBizCode(t, err, errcode.ErrForbidden)
+	if !strings.Contains(be.Msg, "草稿") {
+		t.Errorf("拒绝理由未说明版本状态: %s", be.Msg)
+	}
+	if n := countRows(t, `SELECT COUNT(*) FROM exec_task WHERE flag = 1 AND source_task_no = ?`, src); n != 0 {
+		t.Errorf("治理拒绝却建了任务行: %d（Z1 不建任务）", n)
+	}
+	if len(auditRows(t, ignEvtGovernanceRefuse, src)) != 1 {
+		t.Error("版本不可用的受理拒绝须落治理拒绝留痕（REP-13 c8 可数）")
+	}
 }
 
 // ---------- B-AUTO-12 判定网关 + R-16 写前脱敏 ----------
@@ -445,7 +686,7 @@ func TestFacadeVerdictByPlayRecap(t *testing.T) {
 	src := fmt.Sprintf("CLC-PR-%d", nextSeq())
 	got, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(1),
-		"cluster_ref": newCluster(t), "step_code": "04",
+		"cluster_ref": newCluster(t), "step_code": "04", "nodes": facadeInstallNodes(),
 	}, facadeUser())
 	if err != nil {
 		t.Fatal(err)
@@ -482,7 +723,7 @@ func TestFacadeLogMaskedBeforeWrite(t *testing.T) {
 	src := fmt.Sprintf("CLC-MK-%d", nextSeq())
 	got, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(1),
-		"cluster_ref": newCluster(t), "step_code": "06",
+		"cluster_ref": newCluster(t), "step_code": "06", "nodes": facadeInstallNodes(),
 	}, facadeUser())
 	if err != nil {
 		t.Fatal(err)
@@ -543,7 +784,7 @@ func TestFacadeReceiptIncrement(t *testing.T) {
 	src := fmt.Sprintf("CLC-RC-%d", nextSeq())
 	got, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(1),
-		"cluster_ref": newCluster(t), "step_code": "07",
+		"cluster_ref": newCluster(t), "step_code": "07", "nodes": facadeInstallNodes(),
 	}, facadeUser())
 	if err != nil {
 		t.Fatal(err)
@@ -565,9 +806,9 @@ func TestFacadeReceiptIncrement(t *testing.T) {
 	if ignToInt(rec["next_seq"]) != 3 {
 		t.Errorf("续传游标 next_seq=%v，期望 3", rec["next_seq"])
 	}
-	cursor := ignToInt(rec["cursor"]) // 受理注记 + 启动注记 + 10 行工具 + 终态回填
-	if cursor != 13 {
-		t.Errorf("游标右界 %v，期望 13（INV-38 完整性可判读）", cursor)
+	cursor := ignToInt(rec["cursor"]) // 受理注记 + 交付配置注记 + 启动注记 + 10 行工具 + 终态回填
+	if cursor != 14 {
+		t.Errorf("游标右界 %v，期望 14（INV-38 完整性可判读）", cursor)
 	}
 
 	seen := map[int64]bool{}
@@ -927,7 +1168,7 @@ func TestFacadeLedgerAndStats(t *testing.T) {
 
 	got, err := DeliverySubmit(map[string]any{
 		"source_task_no": src, "source_step_index": int64(1),
-		"cluster_ref": cluster, "step_code": "02",
+		"cluster_ref": cluster, "step_code": "02", "nodes": facadeInstallNodes(),
 	}, facadeUser())
 	if err != nil {
 		t.Fatal(err)
@@ -972,7 +1213,6 @@ func TestFacadeLedgerAndStats(t *testing.T) {
 		"facade_accept_count", "manual_submit_count", "verdict_source_dist", // c6
 		"local_exec_available", "local_exec_observation", // c7
 		"refuse_governance_count", "refuse_tool_unavailable_count", "correct_count", "reconcile_count", // c8~c9
-		"params",
 	} {
 		if _, ok := stats[key]; !ok {
 			t.Errorf("REP-13 缺块 %s（九块 c1~c9）", key)
@@ -1000,9 +1240,21 @@ func TestFacadeLedgerAndStats(t *testing.T) {
 		t.Error("健康快照缺观测类口径说明")
 	}
 	params, _ := stats["params"].(map[string]any)
+	if params != nil {
+		t.Error("统计总览（FUNC-29 / REP-13）回吐运行参数集合 —— 参数面只由 FUNC-30 的 GET /api/v1/ign/params 提供，" +
+			"随统计一并吐出等于绕过 FUNC-30 的读门禁（REP-13 九块 c1~c9 里没有参数块）")
+	}
+	rows, err := GetIgnParams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]string{}
+	for _, r := range rows {
+		byKey[Str(r["config_key"])] = Str(r["config_value"])
+	}
 	for _, k := range []string{ignCfgReceiptLogBatch, ignCfgKillGraceSeconds, ignCfgLogRetentionDays} {
-		if Str(params[k]) == "" {
-			t.Errorf("REF-14~16 运行参数未呈现（%s）", k)
+		if byKey[k] == "" {
+			t.Errorf("REF-14~16 运行参数未入库（%s）", k)
 		}
 	}
 }

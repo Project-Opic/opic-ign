@@ -100,6 +100,12 @@ func ignNodesAction(action string) bool {
 	return action == "ezctl.add-node" || action == "ezctl.del-node"
 }
 
+// ignInstallFamily 安装族动作（argv 带 01~07 步骤编码）：请求体里的节点清单是它的
+// 交付配置派生依据（不进 argv），而节点增删类的清单直接就是命令参数（FUNC-34/Q-72）。
+func ignInstallFamily(action string) bool {
+	return action == "ezctl.setup"
+}
+
 // ignResolveFacadeAction R-13 受理解析：步骤编码命中 01~07 ⇒ 安装族单步；
 // 命中上游类别名 ⇒ 私有映射取单步动作码；两者都不命中、或动作码不属交付动作层 ⇒ 治理拒绝。
 func ignResolveFacadeAction(actionCode, stepCode string) (string, string, error) {
@@ -177,9 +183,22 @@ func ignBuildArgv(bin, action, clusterRef, stepCode string, nodes []string, extr
 		if len(nodes) == 0 {
 			return nil, Fail(errcode.ErrParam, "节点增删类动作必须携带节点地址清单（FUNC-34）")
 		}
+		// 真实命令面事实：add-node 把 ${@:2} 整体 sed 成 hosts 的一行（多地址会写成同一行）
+		// ⇒ 多地址必须换 add-nodes（逐地址校验并追加）；del-node 只取 $2 ⇒ 多地址直接拒绝。
+		if action == "ezctl.add-node" && len(nodes) > 1 {
+			argv[1] = "add-nodes"
+		}
+		if action == "ezctl.del-node" && len(nodes) > 1 {
+			return nil, Fail(errcode.ErrParam,
+				"节点删除一次只处理一个地址（命令面 del-node 只取单个参数）：请拆成多次提交，收到 %d 个地址", len(nodes))
+		}
 		for _, ip := range nodes {
 			if err := ignValidateNodeAddr(ip); err != nil {
 				return nil, err
+			}
+			if !ignIsIPv4(ip) {
+				return nil, Fail(errcode.ErrForbidden,
+					"节点地址 %q 不是 IPv4（命令面对节点增删做 IPv4 硬校验，主机名会在远端才失败）：R-13 受理侧拒绝", ip)
 			}
 			argv = append(argv, strings.TrimSpace(ip))
 		}
@@ -228,7 +247,7 @@ func ignTaskArgv(row map[string]any) ([]string, error) {
 		action, Str(row["cluster_ref"]), Str(row["step_code"]), nodes, args)
 }
 
-// ---------- R-15 执行位可用性与 B-AUTO-15 工作目录幂等前置 ----------
+// ---------- R-15 执行位可用性与 B-AUTO-15 交付配置对齐前置（R-18 三态） ----------
 
 // ignWorkRoot 集群工作目录父目录（配置值；缺省随发行包根目录）。
 func ignWorkRoot() string {
@@ -264,37 +283,6 @@ func ignLocalExecAvailable() (bool, string) {
 	return true, ""
 }
 
-// ignEnsureClusterWorkDir 集群工作目录幂等前置（B-AUTO-15）：
-// 目录已存在即通过（可重入）；缺失时以本域私有手段对齐骨架（命令族建骨架动作），
-// 骨架动作缺席也不静默 —— 目录仍不可建即返回失败，由受理侧记因拒绝（R-15）。
-func ignEnsureClusterWorkDir(clusterRef string) error {
-	if !ignClusterIDRe.MatchString(clusterRef) {
-		return Fail(errcode.ErrParam, "关联集群标识 %q 不符合格式白名单（INV-33）", clusterRef)
-	}
-	dir := ignClusterDir(clusterRef)
-	if ignDirExists(dir) {
-		return nil
-	}
-	if ok, reason := ignLocalExecAvailable(); !ok {
-		return Fail(errcode.ErrState, "%s（R-15）", reason)
-	}
-	// 建骨架属内部前置层动作：不登记任务、不出门面结论（7.3 第 ② 层）
-	bin := strings.TrimSpace(config.Config.Delivery.ToolBin)
-	cmd := exec.Command(bin, "new", clusterRef) // 参数数组直调，不经 shell
-	cmd.Dir = ignWorkRoot()
-	cmd.Env = ignToolEnv(clusterRef)
-	out, err := cmd.CombinedOutput()
-	if !ignDirExists(dir) {
-		if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
-			return Fail(errcode.ErrState, "集群工作目录不可对齐：%v（%s；R-15 受理即刻拒绝）", mkErr, ignTailLine(string(out)))
-		}
-		if err != nil {
-			return Fail(errcode.ErrState, "集群工作目录幂等前置异常：%v（%s；目录已对齐，可重试本步）", err, ignTailLine(string(out)))
-		}
-	}
-	return nil
-}
-
 func ignDirExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
@@ -313,20 +301,54 @@ func ignTailLine(s string) string {
 }
 
 // ignToolEnv 命令面运行环境（C.3.2：注入值由本域登记事实派生，不进字典、不进界面、不由参数下发）。
-func ignToolEnv(clusterRef string) []string {
+// 环境是白名单式重建的，不接受进程环境透传：代理变量一旦进入执行位，ansible 对集群内网
+// （节点/Service/Pod 网段、发行包本地仓库域名）的 HTTP 访问会被吞成 32s Client.Timeout
+// 而不是明确报错（P1.5 实测）⇒ 这里显式声明 NO_PROXY 覆盖全部内网段。
+// SSH 私钥不经环境变量传递：只以 inventory 里的路径出现（R-12 同源纪律）。
+func ignToolEnv(clusterRef string, p ignDeployParams) []string {
 	env := []string{
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"LC_ALL=C.UTF-8",
 		"LANG=C.UTF-8",
-		"HOME=" + ignHomeDir(),
+		"HOME=" + ignHomeDir(), // ezctl/ansible 依赖 HOME（ssh 已知主机、~/.kube）
+		"NO_PROXY=" + ignNoProxyList(p),
+		"no_proxy=" + ignNoProxyList(p),
 	}
-	if d := strings.TrimSpace(config.Config.Delivery.SSHDir); d != "" {
-		env = append(env, "IGN_SSH_DIR="+d)
+	if kp := ignKubeconfigPath(clusterRef); kp != "" {
+		env = append(env, "KUBECONFIG="+kp)
 	}
-	if p := ignKubeconfigPath(clusterRef); p != "" {
-		env = append(env, "KUBECONFIG="+p)
+	// 出网代理只认部署配置里的显式值（在线安装要出海外时由运维登记）；
+	// 集群内网段恒在 NO_PROXY 内，两者不冲突。
+	if px := strings.TrimSpace(config.Config.Delivery.HTTPProxy); px != "" {
+		env = append(env,
+			"HTTP_PROXY="+px, "http_proxy="+px,
+			"HTTPS_PROXY="+px, "https_proxy="+px)
 	}
 	return env
+}
+
+// ignNoProxyList 集群内网直连清单：RFC1918 三段 + 本集群 Service/Pod 网段 + 节点地址
+// + 发行包本地仓库域名与集群 DNS 域（ansible 用域名访问仓库，代理会把它当成外网地址）。
+func ignNoProxyList(p ignDeployParams) string {
+	items := []string{"localhost", "127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "easzlab.io.local"}
+	for _, v := range []string{p.ServiceCIDR, p.PodCIDR, p.DNSDomain} {
+		if v = strings.TrimSpace(v); v != "" {
+			items = append(items, v)
+		}
+	}
+	items = append(items, p.MasterAddrs...)
+	items = append(items, p.NodeAddrs...)
+	if m := strings.TrimSuffix(strings.TrimSpace(p.ImageMirror), "/"); m != "" {
+		m = strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(m, "http://"), "https://"), "//")
+		items = append(items, m)
+	}
+	var clean []string
+	for _, v := range items {
+		if v = strings.TrimSpace(v); v != "" {
+			clean = append(clean, v)
+		}
+	}
+	return strings.Join(dedupStrings(clean), ",")
 }
 
 func ignHomeDir() string {
@@ -495,7 +517,7 @@ func ignRunLocal(row map[string]any) {
 
 	cmd := exec.Command(argv[0], argv[1:]...) // 独立 argv 直调，绝不经 shell（INV-28/R-12）
 	cmd.Dir = ignWorkRoot()
-	cmd.Env = ignToolEnv(clusterRef)
+	cmd.Env = ignToolEnv(clusterRef, ignRunEnvProfile(clusterRef))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

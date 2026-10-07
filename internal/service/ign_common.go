@@ -214,6 +214,19 @@ const (
 	ignCfgReceiptLogBatch    = "receipt_log_batch"       // REF-14 门面单次回吐日志行上限(缺省 500)
 	ignCfgKillGraceSeconds   = "kill_grace_seconds"      // REF-15 取消/超时终止宽限(缺省 30)
 	ignCfgLogRetentionDays   = "task_log_retention_days" // REF-16 任务日志保留天数(缺省 14)
+
+	// REF-17~25 交付参数缺省面：集群交付配置(hosts 的 [all:vars] 与 config.yml)受管键的取值来源。
+	// 优先级固定三层：缺省面(本表) → 交付版本派生(请求体版本引用命中 delivery_version) →
+	// 请求体覆盖，后者胜出；形态不合法即受理拒绝(参数不生效与参数生效但值错，交付链路上后果完全不同)。
+	ignCfgDeployServiceCIDR   = "deploy_service_cidr"      // REF-17 Service 网段(缺省 10.68.0.0/16)
+	ignCfgDeployPodCIDR       = "deploy_pod_cidr"          // REF-18 Pod 网段(缺省 10.200.0.0/16)
+	ignCfgDeployDNSDomain     = "deploy_dns_domain"        // REF-19 集群 DNS 后缀(缺省 cluster.local)
+	ignCfgDeployNetworkPlugin = "deploy_network_plugin"    // REF-20 CNI 插件(缺省 flannel)
+	ignCfgDeployRuntime       = "deploy_container_runtime" // REF-21 容器运行时(缺省 containerd)
+	ignCfgDeployProxyMode     = "deploy_proxy_mode"        // REF-22 kube-proxy 模式(缺省 iptables)
+	ignCfgDeployNodePortRange = "deploy_node_port_range"   // REF-23 NodePort 区间(缺省 30000-32767)
+	ignCfgDeployInstallSource = "deploy_install_source"    // REF-24 取源方式 online/offline(缺省 online)
+	ignCfgDeployImageMirror   = "deploy_image_mirror"      // REF-25 内网镜像仓库地址(空即不改写仓库键)
 )
 
 // defaultIgnConfigs 运行参数缺省(REF-* 口径;FUNC-30 可维护)。
@@ -230,7 +243,29 @@ func defaultIgnConfigs() []struct{ Key, Value, Desc string } {
 		{ignCfgReceiptLogBatch, "500", "REF-14 门面单次回吐日志行数上限（缺省 500 行/次，超出携带续传游标）"},
 		{ignCfgKillGraceSeconds, "30", "REF-15 取消与超时的终止宽限（秒，SIGTERM 后再 SIGKILL）"},
 		{ignCfgLogRetentionDays, "14", "REF-16 任务日志保留天数（超期行由平台侧清理）"},
+		{ignCfgDeployServiceCIDR, "10.68.0.0/16", "REF-17 Service 网段（只校验 CIDR 形态；与节点网络是否重叠属部署侧事实、本域不校验）"},
+		{ignCfgDeployPodCIDR, "10.200.0.0/16", "REF-18 Pod 网段（同上，只校验 CIDR 形态）"},
+		{ignCfgDeployDNSDomain, "cluster.local", "REF-19 集群 DNS 后缀（集群内服务域名后缀；与上游登记的访问端点域名不同源，端点解析不由本参数决定）"},
+		{ignCfgDeployNetworkPlugin, "flannel", "REF-20 CNI 插件（交付版本登记了插件时以版本为准）"},
+		{ignCfgDeployRuntime, "containerd", "REF-21 容器运行时（containerd/docker）"},
+		{ignCfgDeployProxyMode, "iptables", "REF-22 kube-proxy 模式（iptables/ipvs/nftables）"},
+		{ignCfgDeployNodePortRange, "30000-32767", "REF-23 NodePort 区间"},
+		{ignCfgDeployInstallSource, "online", "REF-24 取源方式（online 直接取源 / offline 只用预推与缓存）"},
+		{ignCfgDeployImageMirror, "", "REF-25 内网镜像仓库地址 host:port（空即不改写 config.yml 的仓库键）"},
 	}
+}
+
+// seedIgnConfigIfAbsent 运行参数只在缺失时落缺省值：FUNC-30 由运维改过的值不得被启动种子覆盖
+// （否则"改了的参数重启就回退"，且交付链路会按缺省网段重新生成集群配置）。
+func seedIgnConfigIfAbsent(db *gorm.DB, key, value, desc string, userID int64) error {
+	v, err := ignConfigGet(db, key)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(v) != "" {
+		return nil
+	}
+	return upsertIgnConfig(db, key, value, desc, userID)
 }
 
 // upsertIgnConfig 平台配置项 upsert(幂等)。

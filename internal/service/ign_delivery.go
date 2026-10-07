@@ -19,31 +19,6 @@ import (
 	"gitcode.com/opic-ontology/opic-techbase/pkg/logger"
 )
 
-// ignFacadeNodes 节点地址清单入参归一（JSON 数组或空白分隔串；Q-72：进请求体、两侧各校验一次）。
-func ignFacadeNodes(v any) []string {
-	switch x := v.(type) {
-	case []any:
-		out := make([]string, 0, len(x))
-		for _, it := range x {
-			if s := strings.TrimSpace(fmt.Sprint(it)); s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []string:
-		out := make([]string, 0, len(x))
-		for _, s := range x {
-			if s = strings.TrimSpace(s); s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case string:
-		return ignArgvTokens(x)
-	}
-	return nil
-}
-
 // ignLocalExecutor 本机执行机行（INV-12：LOCAL 全平台至多一行、由系统自动注册）。
 // 门面与人工提交同归这一行 —— 执行位收口本机（Q-68），LOCAL 行即执行位的登记事实。
 func ignLocalExecutor() (map[string]any, error) {
@@ -104,7 +79,7 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 	clusterRef := strings.TrimSpace(Str(data["cluster_ref"]))
 	actionCode := strings.TrimSpace(Str(data["action_code"]))
 	stepCode := strings.TrimSpace(Str(data["step_code"]))
-	nodes := ignFacadeNodes(data["nodes"])
+	versionRef := strings.TrimSpace(Str(data["version_ref"]))
 
 	// ① 请求形态校验（INV-34：门面路径必带来源两列；序号 ≥1）
 	if sourceTaskNo == "" || len(sourceTaskNo) > 64 {
@@ -129,7 +104,15 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 		return nil, err
 	}
 
-	// ③ FUNC-34 请求体字段口径：节点清单只随节点增删类动作（地址非法 ⇒ 治理拒绝）
+	// ③ FUNC-34 请求体字段口径：清单解析（地址/角色/节点名非法 ⇒ 治理拒绝）+ args 列派生
+	nodes, err := ignParseFacadeNodes(data["nodes"]) // Q-72：清单进请求体、两侧各校验一次
+	if err != nil {
+		if biz := AsBizErr(err); biz.Code == errcode.ErrForbidden {
+			ignRefuseAudit(ignEvtGovernanceRefuse, refuseTag, biz.Msg,
+				"R-13 节点清单解析失败（地址/角色/节点名形态不合法）", user)
+		}
+		return nil, err
+	}
 	args, err := ignFacadeArgs(action, nodes)
 	if err != nil {
 		if biz := AsBizErr(err); biz.Code == errcode.ErrForbidden {
@@ -147,13 +130,18 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 		return nil, Fail(errcode.ErrState, "%s（R-15：本机执行位不可用即受理即刻拒绝，不转入其他执行位）", why)
 	}
 
-	// ⑤ B-AUTO-15 工作目录幂等前置（仅安装首步；已对齐即可重入）
-	if action == "ezctl.setup" && resolvedStep == "01" {
-		if err := ignEnsureClusterWorkDir(clusterRef); err != nil {
-			ignRefuseAudit(ignEvtToolUnavailable, refuseTag, Str(AsBizErr(err).Msg),
-				"B-AUTO-15 集群工作目录前置未对齐", user)
+	// ⑤ B-AUTO-15 交付配置前置（对齐三态见 R-18）：安装族按登记事实落定 clusters/<ref>/{hosts,config.yml}，
+	// 节点增删只核对在册事实（不写 hosts —— 新地址由命令面自己 sed 进工作组）
+	alignNote, err := ignAlignPrecondition(clusterRef, action, resolvedStep, versionRef, nodes)
+	if err != nil {
+		kind := "B-AUTO-15 交付配置未对齐（R-15 受理即刻拒绝）"
+		if AsBizErr(err).Code == errcode.ErrForbidden {
+			kind = "R-13 交付配置前置核对不通过（治理拒绝）"
+			ignRefuseAudit(ignEvtGovernanceRefuse, refuseTag, Str(AsBizErr(err).Msg), kind, user)
 			return nil, err
 		}
+		ignRefuseAudit(ignEvtToolUnavailable, refuseTag, Str(AsBizErr(err).Msg), kind, user)
+		return nil, err
 	}
 
 	exec, err := ignLocalExecutor()
@@ -236,6 +224,9 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 	ignAppendTaskLog(toInt(result["id"]), "PLATFORM", fmt.Sprintf(
 		"门面受理：来源 %s/第 %d 步，解析动作 %s，集群 %s（R-13；命令面私有、上游不下发 argv）",
 		sourceTaskNo, sourceStepIndex, action, clusterRef))
+	if alignNote != "" {
+		ignAppendTaskLog(toInt(result["id"]), "PLATFORM", alignNote)
+	}
 	WriteAudit(nil, user.ID, user.Username, "DELIVERY_ACCEPT",
 		"交付门面受理 "+sourceTaskNo+"/第 "+fmt.Sprint(sourceStepIndex)+" 步 → "+Str(result["task_no"]))
 	publishIgnEvent("delivery", "accepted", map[string]any{
@@ -247,21 +238,57 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 }
 
 // ignFacadeArgs 派生 args 列（登记事实的传递，不是命令面下发）：
-// 节点增删类 ⇒ 地址清单（空白分隔，入库即派生事实）；其余动作该字段必须为空。
-func ignFacadeArgs(action string, nodes []string) (string, error) {
+// 节点增删类 ⇒ 地址清单（空白分隔，入库即派生事实）；安装族 ⇒ 空（清单进交付配置，不进 argv）；
+// 其余动作该字段必须为空。
+func ignFacadeArgs(action string, nodes []ignNodeSpec) (string, error) {
+	addrs := ignAddrList(nodes)
 	if ignNodesAction(action) {
-		if len(nodes) == 0 {
+		if len(addrs) == 0 {
 			return "", Fail(errcode.ErrParam, "节点增删类动作必须携带节点地址清单（FUNC-34）")
 		}
-		for _, ip := range nodes {
-			if err := ignValidateNodeAddr(ip); err != nil {
+		return strings.Join(addrs, " "), nil
+	}
+	if ignInstallFamily(action) {
+		return "", nil
+	}
+	if len(addrs) > 0 {
+		return "", Fail(errcode.ErrParam, "非节点增删类动作不得携带节点地址清单（FUNC-34：该字段其余动作必须为空）")
+	}
+	return "", nil
+}
+
+// ignAlignPrecondition 受理侧的交付配置前置（B-AUTO-15 的落点）。
+// 安装族：按请求体节点清单 + 缺省参数面（REF-17~25）+ 交付版本派生渲染 clusters/<ref>；
+// 节点增删：只核对在册事实；其余动作（start/stop/backup/destroy/cmd 族）不需要本域写配置
+// —— 它们的 inventory 由安装族产出，缺失时由命令面自己报错（不代答、不预判）。
+func ignAlignPrecondition(clusterRef, action, stepCode, versionRef string, nodes []ignNodeSpec) (string, error) {
+	switch {
+	case ignInstallFamily(action):
+		topo := ignTopology{}
+		if len(nodes) > 0 {
+			t, err := ignBuildTopology(nodes)
+			if err != nil {
 				return "", err
 			}
+			topo = t
 		}
-		return strings.Join(nodes, " "), nil
-	}
-	if len(nodes) > 0 {
-		return "", Fail(errcode.ErrParam, "非节点增删类动作不得携带节点地址清单（FUNC-34：该字段其余动作必须为空）")
+		params, err := ignProfileForAction(versionRef)
+		if err != nil {
+			return "", err
+		}
+		return ignAlignClusterInventory(ignAlignReq{
+			ClusterRef: clusterRef, Action: action, StepCode: stepCode, Topo: topo, Params: params,
+		})
+	case ignNodesAction(action):
+		// 命令面对节点增删做 IPv4 硬校验（ezctl 的 add-node/del-node 用 IPv4 正则）：
+		// 主机名地址在受理侧就拒掉，不留"任务已登记、执行位才失败"的半途事实
+		for _, ip := range ignAddrList(nodes) {
+			if !ignIsIPv4(ip) {
+				return "", Fail(errcode.ErrForbidden,
+					"节点增删类动作的地址 %q 不是 IPv4（命令面硬校验；R-13 受理侧拒绝）", ip)
+			}
+		}
+		return ignAlignNodeOps(clusterRef, action, ignAddrList(nodes))
 	}
 	return "", nil
 }

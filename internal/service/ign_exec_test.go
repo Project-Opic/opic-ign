@@ -78,12 +78,13 @@ func TestBuildArgv(t *testing.T) {
 			t.Fatalf("got %v want %v", got, want)
 		}
 	})
-	t.Run("节点增删携带地址清单", func(t *testing.T) {
+	t.Run("节点增删多地址走 add-nodes", func(t *testing.T) {
+		// 真实 ezctl 的 add-node 把 ${@:2} 整体 sed 成 hosts 一行 ⇒ 多地址必须换命令字
 		got, err := ignBuildArgv(bin, "ezctl.add-node", "prod-01", "", []string{"10.0.0.7", "10.0.0.8"}, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := []string{bin, "add-node", "prod-01", "10.0.0.7", "10.0.0.8"}
+		want := []string{bin, "add-nodes", "prod-01", "10.0.0.7", "10.0.0.8"}
 		if strings.Join(got, " ") != strings.Join(want, " ") {
 			t.Fatalf("got %v want %v", got, want)
 		}
@@ -164,21 +165,4 @@ func TestLocalExecAvailable(t *testing.T) {
 	})
 }
 
-func TestEnsureClusterWorkDir(t *testing.T) {
-	dir := t.TempDir()
-	bin := filepath.Join(dir, "ezctl")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	withDeliveryConfig(t, bin, dir)
-	if err := ignEnsureClusterWorkDir("prod-01"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "clusters", "prod-01")); err != nil {
-		t.Fatalf("工作目录未按登记事实对齐: %v", err)
-	}
-	// 幂等可重入（B-AUTO-15）：第二次不再触发骨架命令
-	if err := ignEnsureClusterWorkDir("prod-01"); err != nil {
-		t.Fatal(err)
-	}
-}
+// 集群工作目录的对齐语义（B-AUTO-15）见 ign_inventory_test.go 的交付配置对齐用例。

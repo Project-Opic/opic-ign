@@ -1,5 +1,5 @@
 model_type: UI
-version: '1.1'
+version: '1.1.1'
 domain: 交付执行域
 application:
   name: OPIC-交付执行域
@@ -754,6 +754,69 @@ screens:
     required: false
     dataBinding: 部署配置
     valueNote: 只读显示——不在可维护参数内（§1.6.1：部署配置值、运行期不可改）；改它走部署、不走界面
+  - id: el18
+    type: TEXTBOX
+    label: Service 网段（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-17；只校验 CIDR 形态（与节点网络是否重叠属部署侧事实、不校验）；形态不合法即受理拒绝，不静默回落
+  - id: el19
+    type: TEXTBOX
+    label: Pod 网段（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-18；同上，只校验 CIDR 形态
+  - id: el20
+    type: TEXTBOX
+    label: 集群 DNS 后缀（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-19；改写它必须重签访问凭据（服务域名与证书域名形态随之变化）
+  - id: el21
+    type: TEXTBOX
+    label: 容器网络插件（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-20；交付版本登记了插件时以版本登记为准（缺省面被版本派生覆盖）
+  - id: el22
+    type: TEXTBOX
+    label: 容器运行时（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-21；枚举 containerd / docker，枚举外值受理拒绝
+  - id: el23
+    type: TEXTBOX
+    label: 服务代理模式（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-22；枚举 iptables / ipvs / nftables，枚举外值受理拒绝
+  - id: el24
+    type: TEXTBOX
+    label: 节点端口区间（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-23；「起始-结束」形态
+  - id: el25
+    type: TEXTBOX
+    label: 取源方式（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-24；枚举 online / offline，offline 即只用预推与缓存、不出网
+  - id: el26
+    type: TEXTBOX
+    label: 内网镜像仓库地址（v1.1.1）
+    io: I
+    required: false
+    dataBinding: O-SYS 配置项
+    valueNote: REF-25；空即不改写仓库相关键（写空串等于把发行包默认仓库覆盖成非法值）
   actions:
   - actionId: act-FUNC-29
     name: 统计总览查询

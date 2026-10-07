@@ -294,7 +294,7 @@ export default function Login() {
         <div className="brand-idp-tag" style={{ marginBottom: 14 }}>
           <SafetyCertificateOutlined />
           <span>
-            认证源:<b>技术底座本地账号</b>
+            认证源:<b>OPIC 本地账号</b>
             {ssoAvail && `　|　单点登录走 ${conf.idp}`}
           </span>
         </div>
@@ -399,7 +399,7 @@ export default function Login() {
             <div className="brand-logo-mark">
               <ApartmentOutlined />
             </div>
-            <span className="brand-logo-name">OPIC 技术底座</span>
+            <span className="brand-logo-name">OPIC 点火中心</span>
           </div>
 
           <div className="brand-brand-copy">

@@ -192,7 +192,7 @@ export default function AdminDashboard() {
             <div className="dash-hero-greeting">
               {greeting},<em>{user?.real_name || user?.username || '管理员'}</em>
             </div>
-            <div className="dash-hero-sub">欢迎回到 OPIC 技术底座管理控制台 · 以本体驱动,筑智能算力底座</div>
+            <div className="dash-hero-sub">欢迎回到 OPIC 点火中心管理控制台 · 以本体驱动,筑智能算力底座</div>
             <div className="dash-hero-chips">
               <span className="hero-chip">
                 <CalendarOutlined />

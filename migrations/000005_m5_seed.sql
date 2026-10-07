@@ -39,11 +39,11 @@ INSERT INTO sys_permission (code, name, target_type, target_ref) SELECT 'PERM-FU
 INSERT INTO sys_permission (code, name, target_type, target_ref) SELECT 'PERM-FUNC-36', '交付门面 · 任务撤销', 'BEHAVIOR', 'PERM-FUNC-36' WHERE NOT EXISTS (SELECT 1 FROM sys_permission WHERE code='PERM-FUNC-36');
 INSERT INTO sys_permission (code, name, target_type, target_ref) SELECT 'PERM-FUNC-37', '门面受理台账查询', 'BEHAVIOR', 'PERM-FUNC-37' WHERE NOT EXISTS (SELECT 1 FROM sys_permission WHERE code='PERM-FUNC-37');
 
-INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-01', '交付管理员' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-01');
-INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-02', '平台运维管理员' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-02');
-INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-03', '交付审计员' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-03');
-INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-04', '交付只读用户' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-04');
-INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-05', '执行机代理' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-05');
+INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-01', '交付管理员' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-01' OR name='交付管理员');
+INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-02', '平台运维管理员' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-02' OR name='平台运维管理员');
+INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-03', '交付审计员' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-03' OR name='交付审计员');
+INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-04', '交付只读用户' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-04' OR name='交付只读用户');
+INSERT INTO sys_role (code, name) SELECT 'IGN-ROLE-05', '执行机代理' WHERE NOT EXISTS (SELECT 1 FROM sys_role WHERE code='IGN-ROLE-05' OR name='执行机代理');
 
 INSERT INTO sys_role_permission (role_id, permission_id) SELECT r.id, p.id FROM sys_role r, sys_permission p WHERE r.code='IGN-ROLE-01' AND p.code='PERM-FUNC-01' AND NOT EXISTS (SELECT 1 FROM sys_role_permission rp WHERE rp.role_id=r.id AND rp.permission_id=p.id);
 INSERT INTO sys_role_permission (role_id, permission_id) SELECT r.id, p.id FROM sys_role r, sys_permission p WHERE r.code='IGN-ROLE-01' AND p.code='PERM-FUNC-02' AND NOT EXISTS (SELECT 1 FROM sys_role_permission rp WHERE rp.role_id=r.id AND rp.permission_id=p.id);

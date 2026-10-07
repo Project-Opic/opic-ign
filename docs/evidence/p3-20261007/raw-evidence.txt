@@ -1,0 +1,59 @@
+OPIC P3 真实例验收 — 原始取数记录（2026-10-07，192.168.3.200）
+集群 CLU-20261007-0001 / 任务 TSK-20261007-0009 / 节点 172.28.0.12(kasz-node2)
+
+== [A] kubectl get pod -A -o wide （在节点 kasz-node2 上，PATH=/opt/kube/bin） ==
+NAMESPACE     NAME                              READY   STATUS    RESTARTS   AGE   IP            NODE                            NOMINATED NODE   READINESS GATES
+kube-system   coredns-775cd5fdd4-wbxls          1/1     Running   0          18m   10.200.0.2    clu-20261007-0001-172-28-0-12   <none>           <none>
+kube-system   kube-flannel-ds-476pw             1/1     Running   0          18m   172.28.0.12   clu-20261007-0001-172-28-0-12   <none>           <none>
+kube-system   metrics-server-74558b4d96-2nbhk   1/1     Running   0          18m   10.200.0.3    clu-20261007-0001-172-28-0-12   <none>           <none>
+kube-system   node-local-dns-68q7h              1/1     Running   0          18m   172.28.0.12   clu-20261007-0001-172-28-0-12   <none>           <none>
+
+== [B] kubectl get nodes -o wide ==
+NAME                            STATUS   ROLES    AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION           CONTAINER-RUNTIME
+clu-20261007-0001-172-28-0-12   Ready    master   18m   v1.36.3   172.28.0.12   <none>        Ubuntu 24.04.5 LTS   7.0.0-31-generic (amd64)  containerd://2.2.1
+
+== [C] 集群内真实可用性探针（busybox Pod，已删除） ==
+[1] 集群内 DNS 解析 kubernetes.default.svc.cluster.local:  Name/Address -> 10.68.0.1
+[2] kube-proxy Service 路由 (10.68.0.1:443):  10.68.0.1 (10.68.0.1:443) open
+[3] 经 Service 域名 https 访问 apiserver: wget: TLS error from peer (alert code 47) —— 探针镜像无内置 OPIC CA，属探针限制；同一路径由 [D] 的 admin.conf /readyz 覆盖
+    pod phase = Succeeded
+
+== [D] O-IGN 控制容器侧证据 ==
+--- /etc/kubeasz/clusters/CLU-20261007-0001/ 目录（执行位工作根）---
+backup/  clu-20261007-0001-172-28-0-12-kubectl.kubeconfig  clu-...-kubelet.kubeconfig
+config.yml  hosts  kube-controller-manager.kubeconfig  kube-proxy.kubeconfig ...
+--- .ign-delivery.json 接管标记（脱敏后为字段名，值即 sha256 摘要非口令）---
+{
+  "managed": true,
+  "hosts_sha256": "9f3270f73bbf86331b2204e3fa2cc801ad9fedf79024d5a7fb3aecfd901f1159",
+  "config_sha256": "689656f190ce4908ea719a1fa0c301bdd4ce6e5dc0eb01ba13332552bc5470c3",
+  "cluster_ref": "CLU-20261007-0001",
+  "updated_at": "2026-10-07 00:50:10",
+  "note": "按门面登记事实派生（第 07 步；etcd 1/控制面 1/工作 1）",
+  "service_cidr": "10.68.0.0/16",
+  "pod_cidr": "10.200.0.0/16",
+  "dns_domain": "cluster.local",
+  "image_mirror": "easzlab.io.local:5000",
+  "nodes": [ ... ]
+}
+--- kubectl get --raw /readyz ---
+ok
+--- kubectl top nodes ---
+NAME | CPU(cores) | CPU(%) | MEMORY(bytes) | MEMORY(%)
+clu-20261007-0001-172-28-0-12 | 637m | 7% | 5191Mi | 33%
+
+== [E] ezctl 01~07 步骤与远端任务映射（clc 日志回放 + ign 门面受理台账同源） ==
+S1 01 环境准备 -> TSK-20261007-0011 exit 0  (00:45:59~00:46:25)
+S2 02 etcd     -> TSK-20261007-0012 exit 0  (00:46:29~00:46:41)
+S3 03 runtime  -> TSK-20261007-0013 exit 0  (00:46:44~00:46:59)
+S4 04 master   -> TSK-20261007-0014 exit 0  (00:47:00~00:49:49)  PLAY RECAP ok=57 changed=49 unreachable=0 failed=0
+S5 05 worker   -> TSK-20261007-0015 exit 0  (00:49:50~00:49:53)
+S6 06 network  -> TSK-20261007-0016 exit 0  (00:49:55~00:50:09)
+S7 07 addons   -> TSK-20261007-0017 exit 0  (00:50:10~00:50:20)
+
+== [F] Q-73 判据实测证据 ==
+1) 交付配置标记 dns_domain = cluster.local（REF-19 生效值）
+2) 探针 Pod 内 nslookup kubernetes.default.svc.cluster.local -> 10.68.0.1（集群内后缀实为 cluster.local）
+3) 台账 clc_cluster.cluster_dns_domain = p3-lab.local，生成的 kubeconfig server = https://172.28.0.12:6443（走 master IP）
+4) 节点上 api.p3-lab.local 不可解析（/etc/hosts 无条目）
+=> 结论：集群内 DNS 后缀与上游登记的访问端点域名不同源。

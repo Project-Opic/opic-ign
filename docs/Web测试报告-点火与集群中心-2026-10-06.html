@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OPIC 部署 Web 测试报告 · 点火中心(O-IGN) × 集群中心(O-CLC) · 2026-10-06</title>
+<style>
+:root{
+  --fg:#1b2733; --fg2:#4a5b6b; --line:#dde4ea; --bg:#f6f8fa; --card:#fff;
+  --ok:#1a7f4b; --warn:#b26a00; --p2:#c0392b; --p3:#d4763a; --p4:#7a8a99;
+  --accent:#0f5fa8; --mono:"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 22px 80px}
+header.rpt{background:#0f2438;color:#fff;border-radius:10px;padding:26px 28px;margin-bottom:22px}
+header.rpt h1{margin:0 0 6px;font-size:24px;letter-spacing:.5px}
+header.rpt .sub{color:#9fb6cc;font-size:13.5px}
+header.rpt .meta{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:16px;font-size:13px;color:#cfe0ef}
+header.rpt .meta b{color:#fff;font-weight:600}
+h2{font-size:19px;margin:34px 0 12px;padding-left:11px;border-left:4px solid var(--accent)}
+h3{font-size:16px;margin:22px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+table{border-collapse:collapse;width:100%;background:var(--card);font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;text-align:left}
+th{background:#eef3f7;font-weight:600;color:#22384d;white-space:nowrap}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13.5px}
+.kv dt{color:var(--fg2)}
+.kv dd{margin:0}
+code,.mono{font-family:var(--mono);font-size:12.6px;background:#eef3f7;padding:1px 5px;border-radius:4px}
+.pill{display:inline-block;padding:1px 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.ok{background:#e3f4ea;color:var(--ok)}
+.pill.no{background:#fdeaea;color:var(--p2)}
+.pill.p2{background:#fdeaea;color:var(--p2)}
+.pill.p3{background:#fdf1e3;color:var(--p3)}
+.pill.p4{background:#eef1f4;color:var(--p4)}
+.pill.obs{background:#fdf6e3;color:var(--warn)}
+.pill.env{background:#eaf1f8;color:var(--accent)}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px 10px;font-size:13px}
+nav.toc a{color:var(--accent);text-decoration:none;background:#fff;border:1px solid var(--line);
+  border-radius:6px;padding:4px 11px}
+.case{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--ok);
+  border-radius:8px;padding:0;margin:16px 0;overflow:hidden}
+.case.p2{border-left-color:var(--p2)}
+.case>.hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:12px 18px;
+  background:#f2f6f9;border-bottom:1px solid var(--line)}
+.case>.hd .id{font-family:var(--mono);font-weight:700;color:var(--accent);font-size:13px}
+.case>.hd .nm{font-weight:600;font-size:15px}
+.case>.hd .rule{color:var(--fg2);font-size:12.5px}
+.case>.bd{padding:14px 18px}
+.case>.bd ol{margin:6px 0 0;padding-left:20px}
+.case>.bd li{margin:3px 0}
+.grid{display:grid;grid-template-columns:78px 1fr;gap:4px 12px;font-size:13.5px}
+.grid .lb{color:var(--fg2);font-weight:600}
+figure{margin:14px 0 4px;padding:0}
+figure img{width:100%;border:1px solid var(--line);border-radius:6px;display:block;background:#fff}
+figcaption{font-size:12.5px;color:var(--fg2);margin-top:6px;font-family:var(--mono)}
+.shots{display:grid;grid-template-columns:1fr;gap:16px;margin-top:6px}
+.evi{background:#f0f5f2;border:1px solid #d8e6dc;border-radius:6px;padding:10px 14px;
+  font-size:12.8px;font-family:var(--mono);white-space:pre-wrap;word-break:break-all;color:#25402f;margin-top:10px}
+.note{background:#fff8ec;border:1px solid #f0dcae;border-radius:6px;padding:10px 14px;font-size:13px;color:#6b4d12}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:var(--fg2);font-size:12.5px}
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px}
+.sum{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:14px 16px}
+.sum b{display:block;font-size:26px;line-height:1.2;font-variant-numeric:tabular-nums}
+.sum span{font-size:12.5px;color:var(--fg2)}
+.sum.ok b{color:var(--ok)} .sum.bad b{color:var(--p2)} .sum.w b{color:var(--warn)} .sum.i b{color:var(--accent)}
+@media print{
+  @page{size:A4 portrait;margin:12mm 11mm}
+  nav.toc{display:none}
+  html,body{background:#fff}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:none;margin:0;padding:0}
+  table{font-size:11.5px}
+  th{white-space:normal}
+  th,td{padding:5px 7px}
+  figure{break-inside:avoid}
+  .evi,.note,.sum,.card{break-inside:avoid}
+  h2{break-after:avoid}
+  .case>.hd{break-after:avoid}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="rpt">
+  <h1>OPIC 部署 Web 测试报告</h1>
+  <div class="sub">点火中心 O-IGN（ignition-center）× 集群中心 O-CLC（cluster-center-mcc）· kubeasz/ezctl 交付链路 · 浏览器端到端</div>
+  <div class="meta">
+    <span>执行日期：<b>2026-10-06</b></span>
+    <span>环境：<b>192.168.3.200（开发测试环境）</b></span>
+    <span>方式：<b>真实浏览器驱动 + 界面取证</b>（无接口桩）</span>
+    <span>用例：<b>29</b> 条 · 全部通过</span>
+    <span>缺陷：<b>4</b>（P2×1 / P3×1 / P4×2）· 观察项 <b>4</b></span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#scope">1 范围与环境</a>
+  <a href="#summary">2 结论摘要</a>
+  <a href="#matrix">3 用例矩阵</a>
+  <a href="#cases">4 用例详情</a>
+  <a href="#defects">5 缺陷清单</a>
+  <a href="#observe">6 观察项</a>
+  <a href="#envdrift">7 环境存量项</a>
+  <a href="#contract">8 契约与口径附录</a>
+</nav>
+
+<h2 id="scope">1 测试范围与环境</h2>
+<div class="card">
+<dl class="kv">
+  <dt>被测版本</dt><dd>O-IGN <code>ignition-center@86059d3</code>；O-CLC <code>cluster-center-mcc@ae41e9b</code>（两仓已提交推送的当前交付内核）</dd>
+  <dt>访问入口</dt><dd><code>https://clc.opic-ai.ccoe.tech</code>（用户工作台默认落 <code>/clc/cluster</code>）、<code>https://ign.opic-ai.ccoe.tech</code>（默认落 <code>/ign/version</code>）；Traefik websecure → <code>opic-net</code> 内容器 <code>opic-ign-app</code> / clc 应用</dd>
+  <dt>证书</dt><dd>子域为自签证书，浏览器首次访问需「高级 → 继续前往（不安全）」例外；<b>未改动系统信任库</b>（环境项，见 §7）</dd>
+  <dt>运行时</dt><dd>Alpine 容器（uid 10001，无 bash）；PostgreSQL 16 由宿主 Pigsty 供给（<code>opicdb:5433</code>，schema <code>clc</code> / <code>ign</code>）；NATS JetStream 流 <code>OPIC_IGN</code>；Temporal 队列 <code>ign</code> / <code>clc</code></dd>
+  <dt>执行位</dt><dd>点火中心后端容器自身（裁定 Q-68）；命令面 <code>/opt/opic/delivery/bin/ezctl</code>（宿主夹具，只读挂载入容器，<b>不入 git</b>），工作根 <code>/opt/opic/delivery/kube</code>；REMOTE 代理对端本期留位不实现</dd>
+  <dt>夹具行为</dt><dd>输出裸 <code>PLAY RECAP</code> 行（与真 ansible 同形，用于验证 INV-29）；内置 <code>force-fail</code>（failed=1 + exit 1）与 <code>slow</code>（sleep 120，用于撤销链）两个开关</dd>
+  <dt>测试账号</dt><dd>三仓共用底座本地账号体系，口令统一 <code>admin123</code>：<br>
+    <code>clcadmin</code>（集群管理员）· <code>ignadmin</code>（交付管理员 / <code>IGN-ROLE-01</code>）· <code>opsadmin</code>（平台运维管理员 / <code>IGN-ROLE-02</code>）</dd>
+  <dt>不在范围</dt><dd>真机 K8s 安装（命令面为夹具）；REMOTE 执行机代理对端；发行包/镜像仓库上架链路；SSO/ZITADEL 联邦登录</dd>
+</dl>
+</div>
+
+<h2 id="summary">2 结论摘要</h2>
+<div class="card">
+  <div class="sumgrid">
+    <div class="sum ok"><b>29</b><span>执行用例</span></div>
+    <div class="sum ok"><b>29</b><span>通过（含 2 项回归复验）</span></div>
+    <div class="sum bad"><b>4</b><span>缺陷（1 个 P2 权限绕过）</span></div>
+    <div class="sum w"><b>4</b><span>观察 / 可读性项</span></div>
+    <div class="sum i"><b>6</b><span>环境存量项</span></div>
+  </div>
+  <h3>核心结论</h3>
+  <ol>
+    <li><b>clc → ign 远程交付链路在浏览器侧端到端成立</b>：本次在 O-CLC 界面实发一次安装（<code>TSK-20261006-0007</code>，执行位置=远程执行机），35 秒内 7 个步骤逐条经点火中心交付门面受理并回执（<code>TSK-20261006-0040~0046</code>），成功后主控入口、凭据标识与集群生命周期状态由本域自动回写，全程无人工干预。</li>
+    <li><b>结论判定 INV-29（PLAY RECAP 优先于退出码）在界面可证</b>：成功例（exit 0 + <code>failed=0</code>）与失败例（exit 1 + <code>failed=1</code>）判定依据均落 <code>剧本汇总判定（优先于退出码）</code>；活体 7 步全部走该口径。运行观测 c6 分布：EXIT_CODE 35 / PLAY_RECAP 2 / TRACE_LOST 2（采样时点，活体后 PLAY_RECAP +7）。</li>
+    <li><b>取消与撤销语义双向闭合</b>：clc 侧「未执行即取消」+ <code>INV-46</code> 远端撤销引用（<code>TSK-20261006-0036</code>）+ R-15「取消不是回滚」留痕；ign 侧执行位留下 <code>exit -15</code>、终态 <code>CANCELLED</code>、耗时 39 000 ms（宽限期内 SIGTERM 收口）。</li>
+    <li><b>治理拒绝（R-12/R-13）在界面留痕可查</b>：含节点地址注入 <code>10.0.0.11;rm -rf /</code> 被格式白名单拒绝、<code>DESTROY</code>/<code>ADD_NODE</code> 作为执行动作码越域拒绝、步骤编码 <code>NEW</code> 越出 <code>01~07</code> 参数域拒绝，共 6 条治理拒绝，均不与执行结论混计。</li>
+    <li><b>本轮修复项回归通过</b>：O-IGN「运行观测」在缺 <code>ign:FUNC-30</code> 读权限时不再把统计卡整体打空（改为参数块降级提示）；<code>opsadmin</code> 全权视角参数表 11 项 <code>REF-*</code> 正常渲染。</li>
+    <li><b>唯一 P2 缺陷是新发现的接口越权</b>：<code>GET /api/v1/ign/stats</code>（FUNC-29）在响应体里附带了完整运行参数集合，绕过 <code>GET /api/v1/ign/params</code>（FUNC-30）的读门禁。界面不显示，但数据可取，属权限口径缺口，建议上线前修掉。</li>
+  </ol>
+  <div class="note">判定口径：本报告只认定"界面与接口可观测事实"。凡依赖真机 kubeasz/ansible 的效果性结论（集群是否真的装成）由上游 O-CLC 与真实执行位承担，本次夹具不产出该类结论（定性一 ②）。</div>
+</div>
+
+<h2 id="matrix">3 用例矩阵</h2>
+<table>
+<thead><tr><th>编号</th><th>用例名称</th><th>规则 / 不变式依据</th><th class="num">关键实测</th><th>结果</th></tr></thead>
+<tbody>
+<tr><td>A01</td><td>O-CLC 本地账号登录闭环（退出 → 验证码登录）</td><td>底座账号体系 / 验证码防暴力</td><td>clcadmin 登录成功，落 <code>/clc/cluster</code></td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>A02</td><td>O-IGN 登录页与 SVG 验证码渲染</td><td>同上</td><td>验证码为 SVG 自绘（DOM img base64 可解析）</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>A03</td><td>O-IGN 交付管理员登录</td><td>M5 IGN-ROLE-01</td><td>身份「交付管理员 / ignadmin」</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>A04</td><td>O-IGN 岗位切换（opsadmin）</td><td>M5 IGN-ROLE-02</td><td>登录后菜单增「日志与对账」，参数表解锁</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B01</td><td>集群台账列表与健康双源口径</td><td>INV-02 / R-08 / REF-07</td><td>25 条；最近任务列带类别+终态</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B02</td><td>集群详情：执行机引用与凭据仅存标识</td><td>INV-08 / R-01 / R-16</td><td><code>EXE-20261004-0001</code>、<code>vault://…/kubeconfig</code></td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B03</td><td>交付编排任务台账（只增不改）</td><td>INV-31 / R-09 / R-10</td><td>47 条，含成功/已取消/失败/销毁四类终局</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B04</td><td>安装任务 7 步骤流水线与远端回执判定</td><td>REP-12 / Q-69 / INV-46</td><td>判定依据「远端回执(0)」，命令摘要脱敏</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B05</td><td>步骤日志区间闭合与回放游标</td><td>INV-38 / REF-12</td><td><code>#2~#3</code> … <code>#14~#15</code>，游标右界 #16</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B06</td><td>取消链：未执行即取消 + 远端撤销引用</td><td>INV-30 / INV-46 / R-15</td><td>引用 <code>TSK-20261006-0036</code>，取消≠回滚留痕</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B07</td><td>销毁链：强制销毁与级联清理</td><td>R-07 / R-10</td><td>提交人 <code>system</code>，DESTROY 远端回执(0)</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B08</td><td>节点管理清单</td><td>INV-10 / INV-12 / INV-13</td><td>36 条，角色/IP/K8s 节点名/资产引用齐</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B09</td><td>运行观测总览（REP-11）</td><td>REP-11 / REF-07</td><td>25/9/0/1/8、待同步 36、探活失败率 84.0%</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>B10</td><td>发起交付动作对话框（前置校验文案）</td><td>INV-32 / R-09 / R-13</td><td>类别前置、执行位置「绝不静默切换」</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>C01</td><td>活体：界面发起远程安装并即时受理</td><td>FUNC-34 / INV-32 / INV-46</td><td>提示已受理，<code>TSK-20261006-0007</code> 执行中</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>C02</td><td>活体：步骤逐条推进与流式回放</td><td>REP-12 / INV-38</td><td>4 成功 / 1 执行中 / 2 待执行，游标 #11</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>C03</td><td>活体：成功终局与落点回写</td><td>B-AUTO-09 / R-13</td><td>35 s 完成，主控入口 + 凭据标识回写</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>C04</td><td>活体：集群生命周期回写</td><td>INV-02 / R-09 / INV-30</td><td>安装失败 → 运行中，最近任务同步</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>C05</td><td>活体：ign 侧 7 条门面受理与来源反查</td><td>FUNC-34 / INV-34 / Q-70</td><td><code>TSK-20261006-0040~0046</code> 全完成</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D01</td><td>点火中心任务台账（动作/步骤/来源）</td><td>R-13 / INV-33 / INV-34</td><td>46 条，来源列反查 clc 任务号+步骤序号</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D02</td><td>INV-29 成功向：RECAP 优先于退出码</td><td>INV-29 / INV-37</td><td>exit 0 仍判 PLAY_RECAP，日志 9 行</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D03</td><td>INV-29 失败向：RECAP 判失败</td><td>INV-29 / R-14</td><td>failed=1 → FAILED + EXECUTOR_ERROR</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D04</td><td>取消的执行位事实</td><td>INV-28 / REF-15 / INV-30</td><td><code>exit -15</code>、CANCELLED、39 000 ms</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D05</td><td>门面受理台账（REP-14，不复制事实）</td><td>FUNC-37 / REP-14 / INV-34</td><td>39 条，含日志行数/游标右界/受理身份</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D06</td><td>对账与纠偏台账：治理拒绝留痕</td><td>R-12 / R-13 / R-06 / R-09</td><td>16 条，治理拒绝 6（含注入地址拒绝）</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D07</td><td>运行观测 REP-13 九块（全权视角）</td><td>REP-13 / B-CONF-13</td><td>四终态分列、LOST 独立、观测类带扫描时间</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D08</td><td>运行参数（FUNC-30 / REF-*）可维护</td><td>REF-03/07/14/15/16</td><td>11 项参数渲染，含「界面不可维护」约束项</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D09</td><td>权限降级回归：缺 FUNC-30 不得打空统计</td><td>FUNC-29/30 分岗 / REP-13</td><td>统计卡完整 + 参数块降级提示（本轮修复）</td><td><span class="pill ok">通过</span></td></tr>
+<tr><td>D10</td><td>受理台账直连可达性（持 FUNC-37 无 FUNC-28）</td><td>M5 权限矩阵 / 菜单口径</td><td>API 200 / 39 条，但侧栏无入口 → DEF-02</td><td><span class="pill ok">通过</span></td></tr>
+</tbody>
+</table>
+
+<h2 id="cases">4 用例详情（含步骤与截图）</h2>
+
+<div class="case">
+  <div class="hd"><span class="id">A01</span><span class="nm">O-CLC 本地账号登录闭环</span><span class="rule">底座本地账号 + SVG 验证码</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>浏览器已有 clc 会话；证书例外已建立；不依赖 SSO。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>打开 <code>https://clc.opic-ai.ccoe.tech/</code>，确认直达用户工作台（会话复用）。</li>
+        <li>右上角用户区 → <b>退出登录</b>，确认路由回到 <code>/login</code> 且工作台数据不可达。</li>
+        <li>读取登录页三输入位（用户名 / 密码 / 验证码）与验证码图元。</li>
+        <li>以 <code>clcadmin / admin123</code> + 验证码提交（表单 Enter 提交）。</li>
+        <li>观察落地页与顶部身份显示。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>退出即失效会话；本地账号 + 验证码可再次登录，落地集群台账，身份为「集群管理员」。</div>
+      <div class="lb">实测结果</div><div>退出后回 <code>/login</code>；登录返回「登录成功」，落地 <code>/clc/cluster</code>，顶部显示「用户工作台 | 集群管理员」；验证码为 SVG 自绘（4 位、不区分大小写），可从 DOM 的 <code>img[src^=data:image/svg]</code> 解出。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span></div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-CLC-01a.png" alt="clc 登录页"><figcaption>TC-CLC-01a · 退出后的登录页（用户/管理双入口、验证码位）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-01b.png" alt="clc 登录成功"><figcaption>TC-CLC-01b · clcadmin 登录成功落集群台账</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">A02 · A03 · A04</span><span class="nm">O-IGN 登录页、交付管理员登录与岗位切换</span><span class="rule">M5 IGN-ROLE-01 / IGN-ROLE-02</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>ign 子域证书例外已建立；三账号口令 <code>admin123</code>。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>以 <code>ignadmin</code>（交付管理员）登录，从顶部用户区确认身份与账号名。</li>
+        <li>点「退出登录」，观察登录页渲染与验证码位。</li>
+        <li>以 <code>opsadmin</code>（平台运维管理员）重新登录。</li>
+        <li>对比两岗位的左侧菜单项与「运行观测」页参数块差异。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>同底座登录组件在 ign 子域可用；菜单与页面按岗位权限差异渲染，越权数据块降级而非报错打空。</div>
+      <div class="lb">实测结果</div><div>ignadmin 登录态确认（用户区显示「交付管理员 / ignadmin」）；退出回 <code>/login</code>；opsadmin 登录后菜单新增 <b>日志与对账</b>，顶部显示「平台运维管理员」，<code>/ign/ops</code> 参数块由降级提示变为 11 行可编辑表 + 「保存运行参数」。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span>（岗位差异同时暴露 DEF-02 菜单口径错配）</div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-IGN-09.png" alt="ign 登录页"><figcaption>TC-IGN-09 · ign 登录页（登录前退出落地态）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-10.png" alt="ign opsadmin 登录成功"><figcaption>TC-IGN-10 · opsadmin 登录成功（平台运维管理员）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-11.png" alt="ign 运行观测全权视角"><figcaption>TC-IGN-11 · 全权视角运行观测（含参数块）</figcaption></figure>
+    </div>
+    <div class="evi">菜单差异（实测枚举）
+ignadmin ：版本目录 / 发行包与镜像 / 执行机 / 通道安全 / 任务桥接 / 运行观测 / 我的待办 / 我的已办 / 我的申请
+opsadmin ：版本目录 / 发行包与镜像 / 执行机 / 通道安全 / 任务桥接 / 日志与对账 / 运行观测 / 我的待办 / 我的已办 / 我的申请</div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">B01 · B02</span><span class="nm">集群台账与集群详情（凭据仅存标识）</span><span class="rule">INV-02 / R-08 / INV-08 / R-01</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>clcadmin 会话有效；环境存在历史 e2e 集群。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>进入「集群管理 → 集群台账」，读取列表头、计数与筛选面。</li>
+        <li>打开一条运行中集群（<code>CLU-20261006-0003</code>）的详情抽屉。</li>
+        <li>核对编号 / 运行模式 / 生命周期 / 健康 / DNS / 主控入口 / 凭据存放标识 / 版本引用 / 执行机引用。</li>
+        <li>核对「引用台账（R-01 双写）」区块与凭据字段是否只出现位置标识。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>台账 25 条、描述带 INV-02 单向迁移与 R-08 健康双源口径；详情呈现执行机引用与 <code>vault://</code> 位置标识，<b>不出现任何凭据明文</b>。</div>
+      <div class="lb">实测结果</div><div>计数 25；列集为「集群编号 / 名称 / 运行模式 / 生命周期状态 / 健康(原因) / 节点数 / 最近任务 / 操作」。详情抽屉：状态「运行中」、模式「中心引用模式」、主控入口 <code>https://api.e2e-ign-1791259124.cluster.local:6443</code>、凭据存放标识 <code>vault://opic/clc/CLU-20261006-0003/kubeconfig</code>（仅标识）、版本引用 <code>1.30.14</code>、执行机引用 <code>EXE-20261004-0001</code>；引用台账列出「交付执行→执行机 / 交付执行→交付版本」两条双写记录。全页无凭据值泄露。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span>（健康列普遍「未知」见 OBS-04）</div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-CLC-02.png" alt="clc 集群台账"><figcaption>TC-CLC-02 · 集群台账 25 条（最近任务串）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-03.png" alt="clc 集群详情抽屉"><figcaption>TC-CLC-03 · 集群详情：执行机引用 + vault 凭据标识</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">B03 · B04 · B05</span><span class="nm">交付编排台账与安装任务步骤流水线</span><span class="rule">INV-31 / REP-12 / Q-69 / INV-38 / REF-12 / R-16</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>存在历史成功安装任务 <code>TSK-20261006-0004</code>（7 步全经远端）。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>进入「集群管理 → 交付编排」，读取台账计数、列集与各终态样本。</li>
+        <li>对 <code>TSK-20261006-0004</code> 点「查看步骤」。</li>
+        <li>逐行核对 7 个步骤的编码、状态、判定依据、命令摘要、起止时间与日志区间。</li>
+        <li>查看日志回放面板：游标右界、按钮态与面板口径说明。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>任务只增不改（INV-31）；步骤权威在后端、界面不拉整表原始日志（REP-12）；01~07 步骤状态机由 O-CLC 持有（Q-69）；每步日志区间首尾相接且不超过游标右界（INV-38）；命令摘要脱敏（R-16）；面板明确"执行侧原始日志留存于交付域 O-IGN"（REF-12）。</div>
+      <div class="lb">实测结果</div><div>台账计数 47，列集含失败原因/失败步骤/结果摘要/提交人；<code>TSK-20261006-0004</code> 7 步全「已成功」，判定依据统一「远端回执(0)」，命令摘要形如 <code>setup CLU-20261006-0004 01</code>；日志区间严格 <code>#2~#3 / #4~#5 / … / #14~#15</code>（每步 2 行：开始 + 远端受理）；回放面板显示「回放结束 · 游标 #16」并给出续播/从头回放，末行 #16 为成功终局。结果摘要含成功落点（主控入口 + vault 标识）。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span></div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-CLC-04.png" alt="clc 交付编排台账"><figcaption>TC-CLC-04 · 交付编排任务台账</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-05a.png" alt="clc 任务步骤表"><figcaption>TC-CLC-05a · 7 步流水线（远端回执(0) + 日志区间）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-05b.png" alt="clc 日志回放面板"><figcaption>TC-CLC-05b · 日志回放面板：游标 #16 与 REF-12 口径</figcaption></figure>
+    </div>
+    <div class="evi">步骤区间与远端引用对应关系（实测）
+S1 01 #2~#3 → 远端 TSK-20261006-0026   S5 05 #10~#11 → TSK-20261006-0033
+S2 02 #4~#5 → 远端 TSK-20261006-0028   S6 06 #12~#13 → TSK-20261006-0034
+S3 03 #6~#7 → 远端 TSK-20261006-0030   S7 07 #14~#15 → TSK-20261006-0035
+S4 04 #8~#9 → 远端 TSK-20261006-0032   游标右界 #16 = 任务成功终局</div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">B06</span><span class="nm">取消链：未执行即取消 + 远端撤销引用</span><span class="rule">INV-30 / INV-46 / R-15</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>存在已取消任务 <code>TSK-20261006-0005</code>（在步骤 1 长耗时阶段人工取消）。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>交付编排台账选中该任务（状态「已取消」，结果摘要含"人工取消:已请求远端撤销"）。</li>
+        <li>查看步骤：核对进行中步骤与未执行步骤的终态区分。</li>
+        <li>查看日志：核对撤销引用是否写出、取消语义是否留痕。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>取消与失败分列不混写（INV-30）；对已下发步骤必须写出远端撤销引用（INV-46）；"取消不是回滚"以 R-15 语义留痕。</div>
+      <div class="lb">实测结果</div><div>步骤 1「已失败 / 退出码」，失败摘要「人工取消:人工取消:已请求远端撤销」，日志区间 <code>#2~#4</code>；步骤 2~7 一律「未执行即取消」且区间为空。日志：#3 远端受理 <code>TSK-20261006-0036</code> → #4「[取消] 已请求远端撤销(INV-46 引用 TSK-20261006-0036)」→ #5「取消处置完成(R-15):取消不是回滚,已执行步骤效果由交付工具幂等性承担」，游标 #5 闭合。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span>（失败摘要前缀重复"人工取消:"两次，见 OBS-03）</div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-CLC-06.png" alt="clc 取消链步骤表"><figcaption>TC-CLC-06 · 取消链步骤表 + 撤销引用日志</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">B07</span><span class="nm">销毁链：级联清理与本域台账收敛</span><span class="rule">R-07 / R-10 / Q-71</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>集群 <code>CLU-20261006-0004</code> 安装成功后申请销毁，产生 <code>TSK-20261006-0006</code>。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>台账读取销毁任务：类别、提交人、结果摘要。</li>
+        <li>查看步骤：核对 DESTROY 单步判定与命令摘要。</li>
+        <li>查看日志：核对远端受理引用与终局行。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>销毁同样经点火中心门面单步下发（Q-71）；命令面为 <code>destroy &lt;集群&gt;</code>；成功后按 R-07 级联清理本域台账，集群转「已销毁」。</div>
+      <div class="lb">实测结果</div><div>提交人 <code>system</code>、状态「成功」、结果摘要「销毁编排完成:交付工具卸载有结论,级联清理本域台账(R-07)」；单步「DESTROY 销毁 / 已成功 / 远端回执(0) / <code>destroy CLU-20261006-0004</code> / 区间 #2~#3」；日志 #3 远端受理 <code>TSK-20261006-0037</code>，#4 成功终局，游标 #4；集群台账该行状态「已销毁」且仅保留「详情」操作（编辑位随生命周期收口，符合 INV-02）。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span></div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-CLC-07.png" alt="clc 销毁链"><figcaption>TC-CLC-07 · 销毁任务单步链（system 提交）</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">B08 · B09</span><span class="nm">节点管理与运行观测总览</span><span class="rule">INV-10 / INV-12 / INV-13 / REP-11</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">测试步骤</div><div><ol>
+        <li>「集群管理 → 节点管理」：读取计数、列集与约束说明。</li>
+        <li>「运行观测」：读取 REP-11 各统计位与探活样本口径。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>同集群 IP 唯一（INV-10）、资产占用拦截（R-02）、移除即终局（INV-13）、裸机走 IP 人工接管（INV-12）；观测总览覆盖集群/健康/待同步/探活/证书吊销/快照。</div>
+      <div class="lb">实测结果</div><div>节点 36 条，列「节点编号 / 集群 / 角色 / IP / K8s 节点名 / 资产引用 / 状态 / 健康(时间) / 操作」，示例 <code>NOD-20261005-0036</code> 控制面 <code>10.32.180.7</code> → <code>clu-20261005-0020-10-32-180-7</code>，资产引用「裸机(IP 人工接管 INV-12)」，状态「已加入 / 健康」。运行观测：集群 25、运行中 9、降级 0、不可达 1、已销毁 8、参数待同步 36、探活样本 25、探活失败率 84.0%、挂起吊销证书 1、快照 50。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span>（84% 探活失败率源于合成集群无可达 kubeconfig，属环境合成数据，见 §7）</div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-CLC-08.png" alt="clc 节点管理"><figcaption>TC-CLC-08 · 节点管理 36 条</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-09.png" alt="clc 运行观测"><figcaption>TC-CLC-09 · 运行观测 REP-11 总览</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<div class="case p2">
+  <div class="hd"><span class="id">C01 · C02 · C03 · C04 · C05</span><span class="nm">活体端到端：界面发起远程安装 → 点火中心受理 → 回执 → 生命周期回写</span><span class="rule">FUNC-34/35 / INV-32 / INV-46 / B-AUTO-09 / R-13 / INV-29</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>集群 <code>CLU-20261006-0005</code> 处于「安装失败」（满足 INSTALL 的 DRAFT/INSTALL_FAILED 前置）；点火中心容器运行、执行位观测可用；夹具无 force-fail 标记。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>交付编排 →「发起交付动作」，确认对话框绑定目标集群与类别前置说明。</li>
+        <li>把执行位置从「本地链路」切到「远程执行机」，提交。</li>
+        <li>立即查看新任务步骤，观察执行中的逐条推进与流式回放游标。</li>
+        <li>等待收口，刷新读取终局与结果摘要。</li>
+        <li>切到集群台账，核对生命周期状态与最近任务。</li>
+        <li>切到点火中心任务台账，核对本次派生的 7 条门面受理任务及其来源/判定。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>受理即时反馈且不静默切换执行位置（INV-32）；步骤逐条获得远端受理引用（INV-46）；全部步骤有结论后由成功落点回写主控入口与凭据标识（B-AUTO-09/R-13），集群生命周期前滚；ign 侧 7 条任务来源=「TSK-20261006-0007 + 步骤序号 1..7」，判定依据按 INV-29 落 PLAY_RECAP。</div>
+      <div class="lb">实测结果</div><div>
+        <ol>
+          <li>对话框标题「发起交付动作 → CLU-20261006-0005」，类别「安装」，执行位置由本地链路改为<b>远程执行机</b>。</li>
+          <li>提交后提示「交付动作已受理,任务排队执行(可在任务列表查看步骤与日志)」，新行 <code>TSK-20261006-0007</code> 状态「执行中」，提交人 <code>clcadmin</code>，起始 15:20:36。</li>
+          <li>执行中抽样：步骤 1~4「已成功 / 远端回执(0)」，步骤 5「执行中」，步骤 6~7「待执行」，日志区间逐段推进；回放面板「流式回放中 · 游标 #11」，#3/#5/#7/#9 为逐步骤远端受理引用行（<code>TSK-20261006-0040/0041/…</code>）。</li>
+          <li>15:21:11 收口（耗时 35 s），状态「成功」，摘要「安装成功:主控入口 https://api.e2e-cancel-1791259410.local:6443(凭据标识 vault://opic/clc/CLU-20261006-0005/kubeconfig)」。</li>
+          <li>集群台账该路由「安装失败」变为<b>运行中</b>，最近任务更新为 <code>TSK-20261006-0007 INSTALL SUCCEEDED</code>，操作位恢复「详情 / 编辑」。</li>
+          <li>ign 任务台账由 46 增至 <b>53</b>；新增 <code>TSK-20261006-0040~0046</code> 七条，动作 <code>ezctl.setup</code>、步骤编码 01…07、来源列「门面 · TSK-20261006-0007 / 1…7」、退出码 0、状态/结论依据统一「完成 / <b>剧本汇总判定（优先于退出码）</b>」。</li>
+        </ol>
+        一次界面操作即完成「受理 → 逐步执行 → 回执判定 → 落点回写 → 生命周期前滚 → 交付域留痕反查」全链路，未使用任何接口桩。
+      </div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span>（夹具合成执行，真实 K8s 效果性结论不在本用例范围）</div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-CLC-10.png" alt="发起交付动作对话框"><figcaption>TC-CLC-10 · 发起交付动作对话框（类别/执行位置前置说明）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-11.png" alt="执行位置切远程"><figcaption>TC-CLC-11 · 执行位置改为「远程执行机」</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-12.png" alt="受理即时"><figcaption>TC-CLC-12 · 提交即受理：TSK-20261006-0007 执行中</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-13.png" alt="执行中步骤推进"><figcaption>TC-CLC-13 · 执行中：4 成功 / 1 执行中 / 2 待执行，流式游标 #11</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-14.png" alt="终局成功摘要"><figcaption>TC-CLC-14 · 35 s 收口成功，成功落点回写</figcaption></figure>
+      <figure><img src="webtest-shots/TC-CLC-15.png" alt="集群状态翻转"><figcaption>TC-CLC-15 · 集群 安装失败 → 运行中</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-13.png" alt="ign 活体 7 条受理"><figcaption>TC-IGN-13 · ign 台账 53 条：TSK-…-0040~0046 全部「剧本汇总判定」</figcaption></figure>
+    </div>
+    <div class="evi">跨域引用闭环（活体，实测）
+clc TSK-20261006-0007 S1 → ign TSK-20261006-0040  步骤01  COMPLETED / PLAY_RECAP
+clc TSK-20261006-0007 S2 → ign TSK-20261006-0041  步骤02  COMPLETED / PLAY_RECAP
+clc TSK-20261006-0007 S3 → ign TSK-20261006-0042  步骤03  COMPLETED / PLAY_RECAP
+clc TSK-20261006-0007 S4 → ign TSK-20261006-0043  步骤04  COMPLETED / PLAY_RECAP
+clc TSK-20261006-0007 S5 → ign TSK-20261006-0044  步骤05  COMPLETED / PLAY_RECAP
+clc TSK-20261006-0007 S6 → ign TSK-20261006-0045  步骤06  COMPLETED / PLAY_RECAP
+clc TSK-20261006-0007 S7 → ign TSK-20261006-0046  步骤07  COMPLETED / PLAY_RECAP</div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">B10</span><span class="nm">发起交付动作对话框的口径说明</span><span class="rule">INV-32 / R-09 / R-13</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">测试步骤</div><div><ol>
+        <li>分别对「运行中」与「安装失败」集群打开对话框，观察类别可选域与默认值。</li>
+        <li>核对执行位置、主控入口、凭据标识、注入失败步骤四栏的说明文案。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>类别前置（INSTALL 需 DRAFT/INSTALL_FAILED，其余需 RUNNING）显式说明；执行位置登记值与真实执行位置一致、绝不静默切换；故障注入位仅作验证用途且不改变步骤权威归属。</div>
+      <div class="lb">实测结果</div><div>字段说明逐条呈现："任务类别(INSTALL 前置 DRAFT/INSTALL_FAILED;其余前置 RUNNING)"、"执行位置(INV-32:登记值与真实执行位置一致,绝不静默切换)"、"主控入口(可空,成功落点 R-13 自动生成)"、"凭据存放标识(仅位置标识,INV-08)"、"注入失败步骤(可空;仅故障注入验证用,步骤权威在后端,R-09 写回集群)"。</div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">D01 · D02 · D03 · D04</span><span class="nm">点火中心执行内核：任务台账与结论判定（INV-29）</span><span class="rule">R-13 / INV-28 / INV-29 / INV-30 / INV-33 / INV-34 / INV-37 / REF-15</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>已由门面直投两条 RECAP 判定用例（<code>UI-RECAP-OK</code> / <code>UI-RECAP-FAIL</code>）与一条撤销用例。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>「交付管理 → 任务桥接」：读取台账计数、列集与提交执行表单的约束说明。</li>
+        <li>打开成功例 <code>TSK-20261006-0038</code> 详情，核对状态、判定依据、退出码、来源与全部日志行。</li>
+        <li>打开失败例 <code>TSK-20261006-0039</code> 详情，核对 <code>failed=1</code> 时是否仍判 PLAY_RECAP 而非仅看退出码。</li>
+        <li>打开取消例 <code>TSK-20261006-0036</code>，核对退出码 -15 与 CANCELLED 的分列。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>命令面私有、上游不下发 argv（R-13）；argv 直调不经 shell（INV-28）；出现剧本汇总即以其为准、优先于退出码（INV-29）；取消与失败分列（INV-30）；任务归属关联集群（INV-33）；门面受理与人工提交来源分列（INV-34）；每个终态带结论依据（INV-37）。</div>
+      <div class="lb">实测结果</div><div>
+        <ol>
+          <li>台账 46 条；表单约束文案齐备：「动作必须命中 IGN_ACTION 白名单（INV-28）且属交付动作层（7.3：内部前置与平台运维动作不对界面开放）；参数不得含 shell 元字符（R-12）；任务必须归属关联集群（INV-33）；超上限即容量拒绝（R-05）」，并只读呈现命令面路径与扫描时间。</li>
+          <li><code>0038</code>：完成 / <b>剧本汇总判定（优先于退出码）</b> / exit 0 / 来源「门面受理（UI-RECAP-OK / 第 1 步）」；日志 9 行、游标右界 9，行 1 为门面受理（R-13 命令面私有）、行 2 执行位启动（argv 直调不经 shell）、行 3~6 TOOL 流、行 7~8 为裸 <code>PLAY RECAP</code> + <code>ok=7 … failed=0</code>、行 9「终态回填：COMPLETED / 结论依据 PLAY_RECAP / 剧本汇总：1 个执行面主机，0 个失败/不可达」。</li>
+          <li><code>0039</code>：失败 / 剧本汇总判定 / exit 1 / <code>EXECUTOR_ERROR</code>；日志含 <code>fatal: [node1]: FAILED! … fixture forced failure</code> 与 <code>failed=1</code> 汇总行，终态回填「FAILED / PLAY_RECAP / 1 个执行面主机，1 个失败/不可达」——证明 RECAP 优先且与退出码方向一致时仍记 RECAP 口径。</li>
+          <li><code>0036</code>：已取消 / 退出码判定 / <code>exit -15</code>、无失败原因、耗时 39 000 ms（宽限期内 SIGTERM 收口，未升级为 SIGKILL）；日志行 6「进入长耗时阶段(等待撤销)」→ 行 7「终态回填：CANCELLED / EXIT_CODE / 退出码 -15」。</li>
+        </ol>
+      </div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span></div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-IGN-02.png" alt="ign 任务桥接台账"><figcaption>TC-IGN-02 · 任务桥接台账与提交约束（INV-28/33、R-05/R-12）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-03.png" alt="ign RECAP 成功例"><figcaption>TC-IGN-03 · TSK-…-0038：9 行日志 + PLAY_RECAP 判定</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-04.png" alt="ign RECAP 失败例"><figcaption>TC-IGN-04 · TSK-…-0039：failed=1 → FAILED / PLAY_RECAP</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-05.png" alt="ign 取消例"><figcaption>TC-IGN-05 · TSK-…-0036：exit -15 / CANCELLED</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">D05 · D06 · D10</span><span class="nm">门面受理台账、对账与纠偏、入口可达性</span><span class="rule">FUNC-37 / REP-14 / INV-34 / R-12 / R-13 / R-06 / R-09 / INV-37</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">前置条件</div><div>ignadmin（有 FUNC-37、无 FUNC-28）与 opsadmin（两者皆有）两视角。</div>
+      <div class="lb">测试步骤</div><div><ol>
+        <li>以 ignadmin 观察侧栏是否有「日志与对账」入口；无入口时直连 <code>/ign/log</code>。</li>
+        <li>切「门面受理台账」页签，核对固定过滤、列集与游标类字段。</li>
+        <li>切「对账与纠偏」页签，核对拒绝类与纠偏类是否分列。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>受理台账固定过滤「来源任务标识非空」，与任务台账共用同一 ExecTask 查询面、只差列集（不复制事实）；全部例外路径必须留痕，拒绝类（R-12/R-15）与纠偏类（R-06/R-09/INV-37）分列、不与执行结论混计。</div>
+      <div class="lb">实测结果</div><div>
+        <ol>
+          <li>ignadmin 侧栏<b>无</b>「日志与对账」，但直连 <code>/ign/log</code> 可渲染三页签，且 <code>GET /api/v1/ign/facade/task</code> 返回 200 / 39 条 → 入口口径与数据权限错配（DEF-02）。</li>
+          <li>受理台账：标题「门面受理台账（REP-14）」，计数 39，说明"固定过滤「来源任务标识非空」；与任务台账共用同一 ExecTask 查询面，只差列集（不复制事实）"；列含「来源任务标识 + 序号 / 受理身份 / 日志行数 / 游标右界 / 耗时」，样本 <code>UI-RECAP-OK · 第 1 步</code>、<code>TSK-20261006-0004 · 第 7 步</code>，受理身份统一 <code>ignition-agent</code>。</li>
+          <li>对账与纠偏：计数 16，治理拒绝 6 条可读——步骤编码 <code>NEW</code>「既不属安装族参数域 01~07、也不属已登记的动作类别名（R-13）」；执行动作 <code>DESTROY</code>/<code>ADD_NODE</code>「不在 IGN_ACTION 白名单内」；节点地址 <code>"10.0.0.11;rm -rf /"</code>「不符合格式白名单（R-12/R-13：地址非法即治理拒绝）」。拒绝类与纠偏类分列呈现，不与执行结论混计。</li>
+        </ol>
+      </div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span>（功能面通过；权限入口面记 DEF-02）</div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-IGN-07.png" alt="ign 日志与对账直连"><figcaption>TC-IGN-07 · 直连 /ign/log 的三页签（ignadmin）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-08.png" alt="ign 门面受理台账"><figcaption>TC-IGN-08 · 门面受理台账 REP-14（39 条）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-14.png" alt="ign 对账与纠偏"><figcaption>TC-IGN-14 · 对账与纠偏：治理拒绝留痕（含注入地址）</figcaption></figure>
+    </div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">D07 · D08 · D09</span><span class="nm">运行观测九块（REP-13）、运行参数与权限降级回归</span><span class="rule">REP-13 / FUNC-29 / FUNC-30 / B-CONF-13 / R-15 / REF-03~16</span></div>
+  <div class="bd">
+    <div class="grid">
+      <div class="lb">测试步骤</div><div><ol>
+        <li>opsadmin 进「运行观测」，逐块核对 c1~c9 与观测类扫描时间。</li>
+        <li>核对外壳路径（命令面/工作根）是否只读呈现。</li>
+        <li>核对运行参数表 11 项 <code>REF-*</code>。</li>
+        <li>切到 ignadmin（缺 FUNC-30）复看同页：统计卡必须仍完整，参数块降级为说明。</li>
+      </ol></div>
+      <div class="lb">预期结果</div><div>台账事实与系统观测分列、观测类各带扫描时间；LOST 独立成位不并入失败；门面受理量与人工量分列；命令面路径「改它走部署、不走界面」；缺读权限只降级对应块，不得连带打空整页（本轮修复项）。</div>
+      <div class="lb">实测结果</div><div>
+        <ol>
+          <li>九块齐全：版本 1（可用 0/1，c1 全为 DOWNLOADING）、c2 预推 PENDING 2、c3 执行机 ENROLLING 1 / READY 2 / REMOVED 1、健康快照（就绪 2 / 心跳不可达 1 / 超时窗口 120 s / 扫描时间 15:17:34 + 口径说明）、7 日完成 34 / 失败 2 / 已取消 2、<b>LOST 独立位 8（7 日 8）</b>、在途 0、c6 结论依据分布 EXIT_CODE 35 / PLAY_RECAP 2 / TRACE_LOST 2、c7 执行位「可用 · 命令面挂载与可执行探测均通过」，c8 受理侧拒绝 6/0 分列，c9 纠偏 1/1/8。</li>
+          <li>命令面 <code>/opt/opic/delivery/bin/ezctl</code> 与工作根 <code>/opt/opic/delivery/kube</code> 均标「部署配置,只读」，并给出「改它走部署、不走界面」。</li>
+          <li>参数表 11 项：cert_renew_days 14 / heartbeat_timeout_sec 120 / kill_grace_seconds 30 / prepush_concurrency 4 / receipt_log_batch 500 / reconcile_period_sec 60 / replay_window_hours 24 / soft_delete_days 30 / task_log_retention_days 14 / task_timeout_seconds 3600 / token_ttl_hours 24；说明列逐条带 REF 编号。</li>
+          <li>ignadmin 复看：统计卡、健康快照、执行位观测、c1/c2/c3/c6 分布<b>全部正常渲染</b>；参数块显示「运行参数读权限属平台运维管理员（ign:FUNC-30），当前岗位不可见」；同岗位调 <code>GET /api/v1/ign/params</code> 返回 <code>403 / SYS9103 无权限执行该操作</code>。缺陷修复回归通过。</li>
+        </ol>
+      </div>
+      <div class="lb">结论</div><div><span class="pill ok">通过</span>（但 <code>GET /api/v1/ign/stats</code> 仍回吐参数值 → DEF-01）</div>
+    </div>
+    <div class="shots">
+      <figure><img src="webtest-shots/TC-IGN-06.png" alt="ign 运行观测降级视角"><figcaption>TC-IGN-06 · ignadmin 视角：统计完整、参数块降级（修复回归）</figcaption></figure>
+      <figure><img src="webtest-shots/TC-IGN-12.png" alt="ign 运行参数表"><figcaption>TC-IGN-12 · opsadmin：REF-* 运行参数表</figcaption></figure>
+    </div>
+    <div class="evi">DEF-01 证据（同岗位、同会话，两次调用对照）
+GET /api/v1/ign/params   → 403 {"returnInfo":{"returnCode":"SYS9103","errorMsg":"无权限执行该操作"},"data":null}
+GET /api/v1/ign/stats    → 200 data.params = {cert_renew_days:"14", heartbeat_timeout_sec:"120",
+      kill_grace_seconds:"30", prepush_concurrency:"4", receipt_log_batch:"500", reconcile_period_sec:"60",
+      replay_window_hours:"24", soft_delete_days:"30", task_log_retention_days:"14",
+      task_timeout_seconds:"3600", token_ttl_hours:"24"}
+代码位：ignition-center/internal/service/ign_task.go:679-686（IgnStats 内组装 params 并随 FUNC-29 输出）</div>
+  </div>
+</div>
+
+<h2 id="defects">5 缺陷清单</h2>
+<table>
+<thead><tr><th>编号</th><th>级别</th><th>标题</th><th>复现步骤</th><th>实测 / 预期</th><th>建议</th></tr></thead>
+<tbody>
+<tr>
+  <td>DEF-01</td><td><span class="pill p2">P2</span></td>
+  <td>统计接口绕过运行参数读门禁（FUNC-29 泄露 FUNC-30 数据）</td>
+  <td>① ignadmin 登录 <code>/ign/ops</code>；② 界面参数块显示"当前岗位不可见"；③ 同 token 调 <code>GET /api/v1/ign/params</code> → 403 SYS9103；④ 调 <code>GET /api/v1/ign/stats</code> → 200，<code>data.params</code> 含全部 11 项 REF-* 值</td>
+  <td>实测：无 FUNC-30 的岗位可经统计接口取得全部运行参数值；预期：FUNC-30 读权限是唯一出口</td>
+  <td><code>ign_task.go:679-686</code> 移除统计体内的 params（前端本就单独调 /params），或按调用方权限码条件输出；补一条接口级权限回归用例</td>
+</tr>
+<tr>
+  <td>DEF-02</td><td><span class="pill p3">P3</span></td>
+  <td>门面受理台账入口权限码与数据权限码错配</td>
+  <td>① ignadmin（持 FUNC-37、无 FUNC-28）登录；② 侧栏无「日志与对账」；③ 直连 <code>/ign/log</code> 正常渲染；④ <code>GET /api/v1/ign/facade/task</code> → 200 / 39 条</td>
+  <td>实测：有数据权限却无入口，界面把合法用户挡在门外；预期：入口门禁与该页数据接口一致</td>
+  <td><code>seed.go:133</code> 菜单权限由 <code>ign:FUNC-28</code> 改为 <code>ign:FUNC-37</code>（或按 M5 权限矩阵补齐 IGN-ROLE-01 的 FUNC-28），并与前端页签级门禁对齐</td>
+</tr>
+<tr>
+  <td>DEF-03</td><td><span class="pill p4">P4</span></td>
+  <td>AI 助理领域文案仍是底座/连通域残留</td>
+  <td>ign 任一页面 → 右侧「AI 智能助理」</td>
+  <td>实测：欢迎语「我是 OPIC 网络连通域助理」，示例问题引用 <code>coverage_node</code>、连通策略审批；预期：点火中心交付域语义</td>
+  <td>替换该中心 system prompt 与推荐问题（面向执行机/任务/门面受理台账）</td>
+</tr>
+<tr>
+  <td>DEF-04</td><td><span class="pill p4">P4</span></td>
+  <td>登录页营销文案残留底座演示语义</td>
+  <td>退出后查看 <code>/login</code>（clc、ign 两侧同现）</td>
+  <td>实测：「算力服务，一站式高效办理 / 客户接入 · 在线审批 · 进度可查」；预期：OPIC 能力中心各自定位文案</td>
+  <td>改为中心定位文案（集群生命周期交付 / 交付执行与点火），并把"业务账号请联系管理员在管理控制台开通"保留</td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="observe">6 观察项（不判失败）</h2>
+<table>
+<thead><tr><th>编号</th><th>类型</th><th>现象</th><th>影响与判断</th></tr></thead>
+<tbody>
+<tr><td>OBS-01</td><td><span class="pill obs">可读性</span></td><td>「运行观测」页头计数徽章取参数行数：opsadmin 显示 11、ignadmin 显示 0</td><td>与"统计/台账条数"语义混淆，降级时更易误读为"无数据"。建议徽章改为绑定台账总数或去掉。</td></tr>
+<tr><td>OBS-02</td><td><span class="pill obs">口径</span></td><td>c5 四终态含 LOST 8，而 c6 结论依据分布仅 TRACE_LOST 2</td><td>代码口径正确：<code>verdict_source_dist</code> 过滤 <code>source_task_no IS NOT NULL</code>（仅门面受理侧 39 条），c5 为全量 53 条。两卡并排易被读成矛盾，建议 c6 卡加「仅门面受理侧」标注。</td></tr>
+<tr><td>OBS-03</td><td><span class="pill obs">文案</span></td><td>取消步骤失败摘要重复前缀：「人工取消:人工取消:已请求远端撤销」</td><td>信息冗余不影响判定；建议取消摘要拼装去重。</td></tr>
+<tr><td>OBS-04</td><td><span class="pill obs">数据</span></td><td>集群台账健康列普遍「未知」，运行观测探活失败率 84.0%</td><td>合成集群无可达 kubeconfig / 无真实 apiserver，探活按设计降级为未知。真实集群接入后应复测该项，本报告不判缺陷。</td></tr>
+</tbody>
+</table>
+
+<h2 id="envdrift">7 环境存量项（部署事实，非本次缺陷）</h2>
+<div class="card">
+<dl class="kv">
+  <dt>NATS 流命名</dt><dd>点火中心使用既有流 <code>OPIC_IGN</code>（生产由 <code>.env</code> 显式覆盖）；同主题域 <code>opic.ign.&gt;</code> 若遇裸小写域码占用会报 10065 overlap，属环境存量偏差。</dd>
+  <dt>数据库角色</dt><dd>两中心应用仍以 <code>postgres</code> 超用户连 <code>opicdb:5433</code>，OPIC-DB-SCHEMA-01 §3 要求的 <code>o&lt;域码&gt;_rw</code> 未发放。</dd>
+  <dt>命令面夹具</dt><dd><code>/opt/opic/delivery/bin/ezctl</code> 为宿主 shell 夹具（<code>/bin/sh</code>，Alpine 无 bash），输出裸 PLAY RECAP 行并带 force-fail / slow 开关；<b>不入 git</b>，真机部署时须替换为真实 kubeasz。</dd>
+  <dt>证书</dt><dd>子域自签证书，浏览器需一次性例外；未改系统信任库。生产化需正式证书链。</dd>
+  <dt>遗留单元</dt><dd>宿主原 <code>:9680</code> 抢占者 <code>techbase-v3.service</code> 已按选择停用并禁用；<code>otechbase</code> schema 与 Temporal <code>techbase</code> 队列孤儿工作流仍在（无 CLI，未终止）。</dd>
+  <dt>本次测试残留</dt><dd>新增 clc 任务 <code>TSK-20261006-0007</code>、ign 门面任务 <code>TSK-20261006-0040~0046</code>，集群 <code>CLU-20261006-0005</code> 由「安装失败」转「运行中」；连同既有 <code>CLU-20261006-0001~0004</code> 与门面直投用例 <code>UI-RECAP-OK/FAIL</code> 一并按共享环境正常残留保留，未清理。</dd>
+</dl>
+</div>
+
+<h2 id="contract">8 附录：接口与口径（供回归复用）</h2>
+<div class="card">
+<h3>交付门面三接口（O-IGN 定义词汇，裁定 Q-70）</h3>
+<table>
+<thead><tr><th>动作</th><th>方法 / 路径</th><th>权限</th><th>要点</th></tr></thead>
+<tbody>
+<tr><td>受理 FUNC-34</td><td><code>POST /api/v1/ign/delivery/submit</code></td><td>ign:FUNC-34</td><td>幂等键 =「来源任务标识 + 来源步骤序号」；节点地址清单进请求体、两侧各校验一次（Q-72）；成功词汇 <code>COMPLETED</code></td></tr>
+<tr><td>回执 FUNC-35</td><td><code>GET /api/v1/ign/delivery/receipt/:ref</code></td><td>ign:FUNC-35</td><td>支持 <code>since_seq</code> 增量日志游标；正文为顶层对象（<b>无 data 信封</b>）</td></tr>
+<tr><td>撤销 FUNC-36</td><td><code>POST /api/v1/ign/delivery/cancel/:ref</code></td><td>ign:FUNC-36</td><td>进程组终止链 SIGTERM → 宽限 REF-15 → SIGKILL；取消留 <code>exit -15</code> 事实</td></tr>
+<tr><td>受理台账 FUNC-37</td><td><code>GET /api/v1/ign/facade/task</code></td><td>ign:FUNC-37</td><td>固定过滤来源非空，与任务台账共用 ExecTask 查询面</td></tr>
+</tbody>
+</table>
+<div class="note">门面通道错误体为 flat 结构 <code>{"return_code","error_msg"}</code>（401=SYS9102 / 403 治理拒绝=SYS9103 / 400 参数=SYS1001 / 401 未登录=SYS9101）；业务通道仍为底座 <code>{"returnInfo":{...},"data":...}</code>。令牌未配时门面三接口一律 401 关闭态。</div>
+
+<h3>踩点备忘（本次同样复现）</h3>
+<ul>
+  <li>侧栏 SPA 菜单无 <code>&lt;a href&gt;</code>，自动化需先点 submenu 标题再点子项；直连路由可用（守卫在登录态下放行）。</li>
+  <li>antd 两汉字按钮会插空格（<code>详情</code> → 可及名「详 情」），选择器须用 <code>/详\s*情/</code>；同理 <code>查 询</code>、<code>确 定</code>、<code>刷 新</code>。</li>
+  <li>antd 密码框同为 <code>role=textbox</code>，必须按可及名取字段，不能用 <code>nth()</code>；登录按钮存在动画导致的 "element is not stable"，用验证码位 <code>press('Enter')</code> 触发表单提交。</li>
+  <li>antd v6 模态框外层为 <code>.ant-modal-wrap</code>，<code>.ant-modal-content</code> 可能不存在，定位选择器应以 wrap 为作用域。</li>
+  <li>列表数据键为 <code>data.list</code>；会话令牌 localStorage 键 <code>cp_token</code>（Bearer）。</li>
+  <li><code>localStorage</code> / <code>document</code> 只能在 <code>page.evaluate</code> 内访问。</li>
+</ul>
+
+<h3>取证方式</h3>
+<p>全部结论来自真实浏览器（Playwright 驱动）与同会话接口对照；截图共 28 张，与本 HTML 同级目录 <code>webtest-shots/</code> 一同分发（打开本报告需保持该目录相对位置）。测试数据未做任何接口桩或前端假造。</p>
+</div>
+
+<footer>
+  OPIC 部署 Web 测试报告 · 2026-10-06 · 环境 192.168.3.200 · 被测 ignition-center@86059d3 / cluster-center-mcc@ae41e9b<br>
+  本文件为交付物，未随任何 git 提交动作；处置（提交/推送/删除）由用户决定。
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OPIC P3 真实例验收报告 · 集群中心(O-CLC) 经 点火中心(O-IGN) 交付真实 K8s · 2026-10-07</title>
+<style>
+:root{
+  --fg:#1b2733; --fg2:#4a5b6b; --line:#dde4ea; --bg:#f6f8fa; --card:#fff;
+  --ok:#1a7f4b; --warn:#b26a00; --p2:#c0392b; --p3:#d4763a; --p4:#7a8a99;
+  --accent:#0f5fa8; --mono:"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 22px 80px}
+header.rpt{background:#0f2438;color:#fff;border-radius:10px;padding:26px 28px;margin-bottom:22px}
+header.rpt h1{margin:0 0 6px;font-size:24px;letter-spacing:.5px}
+header.rpt .sub{color:#9fb6cc;font-size:13.5px}
+header.rpt .meta{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:16px;font-size:13px;color:#cfe0ef}
+header.rpt .meta b{color:#fff;font-weight:600}
+h2{font-size:19px;margin:34px 0 12px;padding-left:11px;border-left:4px solid var(--accent)}
+h3{font-size:16px;margin:22px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+table{border-collapse:collapse;width:100%;background:var(--card);font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;text-align:left}
+th{background:#eef3f7;font-weight:600;color:#22384d;white-space:nowrap}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13.5px}
+.kv dt{color:var(--fg2)}
+.kv dd{margin:0}
+code,.mono{font-family:var(--mono);font-size:12.6px;background:#eef3f7;padding:1px 5px;border-radius:4px}
+.pill{display:inline-block;padding:1px 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.ok{background:#e3f4ea;color:var(--ok)}
+.pill.no{background:#fdeaea;color:var(--p2)}
+.pill.obs{background:#fdf6e3;color:var(--warn)}
+.pill.env{background:#eaf1f8;color:var(--accent)}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px 10px;font-size:13px}
+nav.toc a{color:var(--accent);text-decoration:none;background:#fff;border:1px solid var(--line);
+  border-radius:6px;padding:4px 11px}
+.case{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--ok);
+  border-radius:8px;padding:0;margin:16px 0;overflow:hidden}
+.case>.hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:12px 18px;
+  background:#f2f6f9;border-bottom:1px solid var(--line)}
+.case>.hd .id{font-family:var(--mono);font-weight:700;color:var(--accent);font-size:13px}
+.case>.hd .nm{font-weight:600;font-size:15px}
+.case>.hd .rule{color:var(--fg2);font-size:12.5px}
+.case>.bd{padding:14px 18px}
+.case>.bd ol{margin:6px 0 0;padding-left:20px}
+.case>.bd li{margin:3px 0}
+.grid{display:grid;grid-template-columns:78px 1fr;gap:4px 12px;font-size:13.5px}
+.grid .lb{color:var(--fg2);font-weight:600}
+figure{margin:14px 0 4px;padding:0}
+figure img{width:100%;border:1px solid var(--line);border-radius:6px;display:block;background:#fff}
+figcaption{font-size:12.5px;color:var(--fg2);margin-top:6px;font-family:var(--mono)}
+.evi{background:#f0f5f2;border:1px solid #d8e6dc;border-radius:6px;padding:10px 14px;
+  font-size:12.8px;font-family:var(--mono);white-space:pre-wrap;word-break:break-all;color:#25402f;margin-top:10px}
+.note{background:#fff8ec;border:1px solid #f0dcae;border-radius:6px;padding:10px 14px;font-size:13px;color:#6b4d12}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:var(--fg2);font-size:12.5px}
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px}
+.sum{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:14px 16px}
+.sum b{display:block;font-size:26px;line-height:1.2;font-variant-numeric:tabular-nums}
+.sum span{font-size:12.5px;color:var(--fg2)}
+.sum.ok b{color:var(--ok)} .sum.bad b{color:var(--p2)} .sum.i b{color:var(--accent)}
+@media print{
+  @page{size:A4 portrait;margin:12mm 11mm}
+  nav.toc{display:none}
+  html,body{background:#fff}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:none;margin:0;padding:0}
+  table{font-size:11.5px}
+  th{white-space:normal}
+  th,td{padding:5px 7px}
+  figure{break-inside:avoid}
+  .evi,.note,.sum,.card{break-inside:avoid}
+  h2{break-after:avoid}
+  .case>.hd{break-after:avoid}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="rpt">
+  <h1>OPIC P3 真实例验收报告</h1>
+  <div class="sub">集群中心 O-CLC 发起 → 点火中心 O-IGN 交付门面受理 → 真 kubeasz（ezctl 01~07）在真节点建成可用 K8s 集群 · 浏览器界面取证 + 节点侧实测回读</div>
+  <div class="meta">
+    <span>执行日期：<b>2026-10-07</b></span>
+    <span>环境：<b>192.168.3.200（开发测试环境）</b></span>
+    <span>验收对象：<b>CLU-20261007-0001 / TSK-20261007-0009</b></span>
+    <span>用例：<b>11</b> 条 · 通过 <b>11</b></span>
+    <span>P3 期间改动：<b>零业务代码</b>（仅 O-IGN 运行镜像 + compose 透传行）</span>
+    <span>已裁定：<b>Q-73 = 不同源</b>（2026-10-07 按 AI 建议，见 §7）</span>
+    <span>已裁定：<b>OBS-P3-01 = 处理</b>（2026-10-07 v1.2 批新增 <code>R-19</code>，见 §8）</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#scope">1 范围与口径</a>
+  <a href="#summary">2 结论摘要</a>
+  <a href="#matrix">3 用例矩阵</a>
+  <a href="#cases">4 用例详情与取证</a>
+  <a href="#raw">5 节点侧原始回读</a>
+  <a href="#deployfacts">6 部署侧留存事实</a>
+  <a href="#q73">7 Q-73 判据与裁定</a>
+  <a href="#limits">8 边界与未覆盖项</a>
+</nav>
+
+<h2 id="scope">1 测试范围与口径</h2>
+<div class="card">
+<dl class="kv">
+  <dt>被测版本</dt>
+  <dd>O-IGN <code>ignition-center</code>（HEAD <code>86059d3</code> + 工作树 30 文件改动，含 v1.1.1 批与 DEF-01/02 修复）；O-CLC <code>cluster-center-mcc</code>（HEAD <code>ae41e9b</code> + 工作树 19 文件改动）。<b>工作树未提交</b>（遵用户指令：未经要求不提交）。3.200 上部署的镜像即由该工作树构建。</dd>
+  <dt>本轮要证的链路</dt>
+  <dd>clc 界面「发起安装」→ 按 01~07 拆步 → 逐步经 ign <b>交付门面</b>受理（FUNC-34）→ ign 执行位（<b>容器自身</b>，裁定 Q-68）调 <b>真</b> <code>/etc/kubeasz/ezctl</code> → ansible 落到真节点 172.28.0.12 → 步骤终态回填 → clc 成功落点回写（集群 RUNNING / 登记节点 ADDED）→ 探活翻转 HEALTHY。</dd>
+  <dt>与上一份报告的差别</dt>
+  <dd>2026-10-06 报告用的是宿主<b>夹具</b> ezctl（伪造剧本输出）；本轮命令面换成<b>真 kubeasz 3.7.0</b>，产出的是<b>真实可使用的集群</b>。用例覆盖从「状态机是否正确」升级为「真机是否建成、集群是否可用」。</dd>
+  <dt>执行位与命令面</dt>
+  <dd>容器 <code>opic-ign-app</code>（ubuntu 24.04 · uid 10001 <code>app</code> · 装整包 <code>ansible</code> 9.2.0 / core 2.16.3）；命令面 <code>/etc/kubeasz/ezctl</code>（宿主目录 bind 挂载）；工作根 <code>/etc/kubeasz</code>；SSH 登录用户经 <code>IGN_DELIVERY_SSH_USER</code> 注入 <code>ansible_ssh_user</code>。</dd>
+  <dt>真节点</dt>
+  <dd><code>kasz-node2</code> = 172.28.0.12（特权 systemd 容器，Ubuntu 24.04.5 · 容器内 systemd 正常）；<b>node1（172.28.0.11 / kasz-lab）为既有活体环境，本轮未触碰</b>。</dd>
+  <dt>取证方式</dt>
+  <dd>真实浏览器（Tabbit 驱动 Playwright）登录两套用户工作台（验证码走界面真实表单，无接口桩）；台账/抽屉截图 13 张存 <code>evidence/p3-20261007/</code>；节点侧命令原文记录同目录 <code>raw-evidence.txt</code>。</dd>
+</dl>
+</div>
+
+<h2 id="summary">2 结论摘要</h2>
+<div class="sumgrid">
+  <div class="sum ok"><b>7/7</b><span>ezctl 步骤全 SUCCEEDED<br>01→07 无一跳过</span></div>
+  <div class="sum ok"><b>1</b><span>真实集群建成<br>CLU-20261007-0001 RUNNING</span></div>
+  <div class="sum ok"><b>4/4</b><span>kube-system Pod 1/1 Running<br>coredns·flannel·metrics-server·node-local-dns</span></div>
+  <div class="sum ok"><b>Ready</b><span>节点就绪并上报指标<br>kubectl top 有数值 · /readyz=ok</span></div>
+  <div class="sum i"><b>0</b><span>业务代码改动<br>仅镜像与 compose 透传</span></div>
+  <div class="sum ok"><b>Q-73</b><span>已裁定：后缀不同源<br>FUNC-34 请求体不扩列（§7）</span></div>
+  <div class="sum ok"><b>OBS-01</b><span>已处理：OBS-P3-01<br>v1.2 批新增 R-19 门槛（§8）</span></div>
+</div>
+<div class="card">
+<p style="margin-top:0"><b>结论：P3 通过。</b>「clc 界面发起 → ign 门面受理 → 真 kubeasz 装机」三段在真节点上端到端跑通，且交付出的集群<b>经功能探针验证可用</b>（集群内 DNS 解析、kube-proxy Service 路由均实测通过，见 TC-10）。本轮全部阻塞点都定位在<b>执行位能力面与节点先决条件</b>（ansible collections、非 root 建链、kmod/dbus、Docker bind mount 原子写、nginx stream 模块），修复落在镜像与部署侧，<b>没有为通过测试而改动业务口径</b>。</p>
+<p style="margin-bottom:0">两域口径一致性同步得到实测佐证：同一个安装动作在 clc 侧是 1 条任务 7 个步骤，在 ign 侧是 7 条 <code>ezctl.setup</code> 任务，双向由「来源任务标识 + 来源步骤序号」互查（<code>门面 · TSK-20261007-0009 / 第 N 步</code>），与裁定 Q-69 / Q-70 / Q-72 完全一致。</p>
+</div>
+
+<h2 id="matrix">3 用例矩阵</h2>
+<table>
+<thead><tr><th>编号</th><th>用例</th><th>断言点（模型/规则锚）</th><th>结果</th><th>取证</th></tr></thead>
+<tbody>
+<tr><td class="mono">TC-P3-01</td><td>界面登记集群并写入节点清单</td><td>AGG-CLC-01/02；节点 PENDING 且带 IP 唯一(INV-10)</td><td><span class="pill ok">通过</span></td><td>截图 01</td></tr>
+<tr><td class="mono">TC-P3-02</td><td>界面发起 INSTALL 并按 01~07 展开步骤</td><td>FUNC-03；B-AUTO 步骤权威在 O-CLC（Q-69）</td><td><span class="pill ok">通过</span></td><td>截图 03、04</td></tr>
+<tr><td class="mono">TC-P3-03</td><td>每步经门面受理并携带登记事实</td><td>FUNC-34；R-19 受理携带事实；Q-72 节点进请求体</td><td><span class="pill ok">通过</span></td><td>截图 05、12</td></tr>
+<tr><td class="mono">TC-P3-04</td><td>ign 侧 7 条子任务终态与结论依据正确</td><td>成功=<code>COMPLETED</code>；结论优先 PLAY_RECAP（R-09）</td><td><span class="pill ok">通过</span></td><td>截图 08、09</td></tr>
+<tr><td class="mono">TC-P3-05</td><td>步骤日志区间与 SSE 回放只读一致</td><td>REP-12 c1~c9；日志行不独立编号（Q-72）</td><td><span class="pill ok">通过</span></td><td>截图 05</td></tr>
+<tr><td class="mono">TC-P3-06</td><td>成功落点回写：集群 RUNNING、登记节点 ADDED + k8s 节点名</td><td>B-AUTO-09；INV-14 派生节点名</td><td><span class="pill ok">通过</span></td><td>截图 02、06</td></tr>
+<tr><td class="mono">TC-P3-07</td><td>引用台账双写（执行机 / 交付版本）</td><td>R-01 双写</td><td><span class="pill ok">通过</span></td><td>截图 02、10</td></tr>
+<tr><td class="mono">TC-P3-08</td><td>人工登记探活按阈值翻转健康</td><td>R-08 防抖；REF-03/REF-11 阈值；INV-34</td><td><span class="pill ok">通过</span></td><td>截图 07</td></tr>
+<tr><td class="mono">TC-P3-09</td><td><code>kubectl get pod -A</code> 真实回读</td><td>集群实际可用（用户验收要求）</td><td><span class="pill ok">通过</span></td><td>§5 [A][B]</td></tr>
+<tr><td class="mono">TC-P3-10</td><td>集群内 DNS + Service 路由功能探针</td><td>Suffix/Service 网段与交付配置一致</td><td><span class="pill ok">通过</span></td><td>§5 [C]</td></tr>
+<tr><td class="mono">TC-P3-11</td><td>失败重试留痕可查（历史 6 条失败任务）</td><td>失败终态、失败步骤、结论依据可回溯</td><td><span class="pill ok">通过</span></td><td>截图 03、08</td></tr>
+</tbody>
+</table>
+
+<h2 id="cases">4 用例详情与界面取证</h2>
+
+<div class="case">
+  <div class="hd"><span class="id">TC-P3-01 / 02 / 06 / 07</span><span class="nm">真实例登记、发起安装、成功落点与引用台账</span><span class="rule">AGG-CLC-01/02 · FUNC-03 · B-AUTO-09 · R-01 · INV-14</span></div>
+  <div class="bd">
+    <div class="grid">
+      <span class="lb">前置</span><span>3.200 上 <code>opic-ign-app</code> 已挂载真 <code>/etc/kubeasz</code>；<code>kasz-node2</code>(172.28.0.12) 已装 kmod/dbus、解除 <code>systemd-modules-load</code> mask、<code>/etc/hosts</code> 与 <code>/etc/hostname</code> 脱离 bind mount；ign 容器已接入 <code>opic-k8s-lab</code> 网络 172.28.0.13 并由 sidecar 提供 :5000 镜像仓库。</span>
+      <span class="lb">步骤</span><span>① 用户工作台「集群台账」新建集群：<code>p3-real-k8s-000118</code>、运行模式=中心引用模式、DNS 域名 <code>p3-lab.local</code>、版本引用 <code>VER-20261006-0001</code>、执行机引用 <code>EXE-20261004-0001</code>、登记 1 个控制面节点 172.28.0.12；② 详情 → 发起「安装」；③ 任务台账观察 7 步推进；④ 回读集群详情与节点台账。</span>
+      <span class="lb">实测</span><span>集群 <code>CLU-20261007-0001</code> = <b>RUNNING / 健康</b>；节点 <code>NOD-20261007-0001</code> = <b>已加入</b>、k8s 节点名 <code>clu-20261007-0001-172-28-0-12</code>（INV-14 派生口径）、健康；引用台账双写执行机与交付版本两条；最近任务 <code>TSK-20261007-0009 INSTALL SUCCEEDED</code>。</span>
+      <span class="lb">判定</span><span><span class="pill ok">通过</span> 登记事实到交付事实再回写台账的闭环成立，且全程界面发起、无接口桩。</span>
+    </div>
+    <figure><img src="evidence/p3-20261007/01-clc-cluster-list.png" alt="clc 集群台账"><figcaption>evidence/p3-20261007/01-clc-cluster-list.png · 集群台账：CLU-20261007-0001 运行中 / 健康 / 节点数 1 / 最近任务 TSK-20261007-0009 INSTALL SUCCEEDED</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/02-clc-cluster-detail.png" alt="clc 集群详情抽屉"><figcaption>02-clc-cluster-detail.png · 详情抽屉：主控入口 <code>https://api.p3-lab.local:6443</code>、凭据标识(INV-08 仅标识)、引用台账 R-01 双写两条</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/06-clc-node-ledger.png" alt="clc 节点台账"><figcaption>06-clc-node-ledger.png · 节点台账：NOD-20261007-0001 / 172.28.0.12 / k8s 节点名已回填 / 已加入 / 健康</figcaption></figure>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">TC-P3-03 / 05</span><span class="nm">01~07 步骤流水线与日志回放（O-CLC 为步骤权威）</span><span class="rule">FUNC-03 · FUNC-34/35 · REP-12 · Q-69 · Q-72</span></div>
+  <div class="bd">
+    <div class="grid">
+      <span class="lb">步骤</span><span>任务台账 → 「查看步骤」打开三段式抽屉（任务事实 / 交付步骤流水线 / 日志回放面板），观察 7 步状态、判定依据、命令摘要（脱敏）、日志区间；再回放本域交付日志。</span>
+      <span class="lb">实测</span><span>7 步全「已成功」，判定依据统一为「远端回执(0)」，命令摘要形如 <code>setup CLU-20261007-0001 04</code>；日志区间 #2~#15 连续、游标右界 #16；回放面板显式声明「远程链路的执行侧原始日志留存于交付域(O-IGN)，本面板仅回放本域登记的交付日志(REF-12)」—— 两域日志<b>不互相复制事实</b>。</span>
+      <span class="lb">对照</span><span>04（控制面）耗时 00:47:00~00:49:50，与 ign 侧该子任务 169 秒、229 行原始日志一致；05（加工作节点）仅 5 秒，因为生成的 hosts 清单里 <code>[kube_node]</code> 组就是同一台 172.28.0.12（单机同时登记为 etcd/master/node，见 §5 [E] 原文）。</span>
+      <span class="lb">判定</span><span><span class="pill ok">通过</span> 步骤状态机权威确在 O-CLC，ign 只把 <code>ezctl.setup</code> 的参数当合法域（Q-69）。</span>
+    </div>
+    <figure><img src="evidence/p3-20261007/03-clc-task-ledger.png" alt="clc 任务台账"><figcaption>03-clc-task-ledger.png · 任务台账：TSK-20261007-0009 成功（含结果摘要「安装成功:主控入口 …；登记节点 1 个已加入」）；其上方 6 条失败任务（TSK-20261007-0003~0008）为本轮排障留痕（见 TC-P3-11）</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/04-clc-task-steps.png" alt="clc 步骤流水线"><figcaption>04-clc-task-steps.png · 交付步骤流水线（只读）：01~07 全「已成功」</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/05-clc-task-log-replay.png" alt="clc 日志回放"><figcaption>05-clc-task-log-replay.png · 日志回放面板：每步「受理」行带远端任务号，终局行为「全部步骤有结论,B-AUTO-09/成功落点回写完成」</figcaption></figure>
+    <div class="evi">步骤 ↔ 远端任务映射（由 clc 日志回放与 ign 门面受理台账双向核对，两边同源）
+S1 01 环境准备   → TSK-20261007-0011  exit 0  00:45:59~00:46:25
+S2 02 部署 etcd  → TSK-20261007-0012  exit 0  00:46:29~00:46:41
+S3 03 容器运行时 → TSK-20261007-0013  exit 0  00:46:44~00:46:59
+S4 04 K8s 控制面 → TSK-20261007-0014  exit 0  00:47:00~00:49:49   （ign 侧 229 行原始日志）
+S5 05 加入工作节点 → TSK-20261007-0015  exit 0  00:49:50~00:49:53
+S6 06 网络插件   → TSK-20261007-0016  exit 0  00:49:55~00:50:09
+S7 07 扩展组件   → TSK-20261007-0017  exit 0  00:50:10~00:50:20</div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">TC-P3-04 / 11</span><span class="nm">点火中心执行位、门面受理台账与失败留痕</span><span class="rule">Q-68 · Q-70 · FUNC-37 · INV-34 · R-09</span></div>
+  <div class="bd">
+    <div class="grid">
+      <span class="lb">步骤</span><span>① ign「任务桥接」页看执行位可用性与命令面（只读）；② 「运行观测」看统计总览与运行参数；③ 「日志与对账台 → 门面受理台账」按来源反查；④ 打开一条成功子任务看原始日志行与 PLAY RECAP。</span>
+      <span class="lb">实测</span><span>执行位「本机执行位 · 可用」，不可用原因位为「命令面挂载与可执行探测均通过」；命令面 <code>/etc/kubeasz/ezctl</code>、工作根 <code>/etc/kubeasz</code> 界面只读并注明「改它走部署、不走界面」。门面受理台账 7 条 <code>ezctl.setup</code>，来源列统一为「门面 · TSK-20261007-0009 / 第 N 步」；结论依据分布 EXIT_CODE 36 / PLAY_RECAP 25 / TRACE_LOST 2，其中本轮成功步全部标「剧本汇总判定（优先于退出码）」；子任务 0014 尾部原文 <code>172.28.0.12 : ok=57 changed=49 unreachable=0 failed=0 skipped=4</code> + <code>终态回填：COMPLETED / 结论依据 PLAY_RECAP / 剧本汇总：1 个执行面主机，0 个失败/不可达</code>。组件版本横幅 kubernetes v1.36.3 / etcd v3.7.1 / flannel v0.28.9 与交付版本台账登记一致。</span>
+      <span class="lb">留痕</span><span>失败子任务（如 <code>TSK-20261007-0010</code> · 04 步 · nginx stream 模块缺失，标注 <code>EXECUTOR_ERROR</code>）与上游 6 条失败安装任务 <code>TSK-20261007-0003~0008</code>（失败步骤 1/4）在两侧台账均可查、可点开日志，重试未被吞史；<code>0003~0007</code> 停在第 1 步（执行位登录与节点先决条件），<code>0008</code> 停在第 4 步（kube-lb 的 nginx stream 模块缺失）。</span>
+      <span class="lb">判定</span><span><span class="pill ok">通过</span> 幂等键=来源任务标识+来源步骤序号在界面上直接可读，跨域反查闭环；执行位容器自身即真 kubeasz 控制机（Q-68）。</span>
+    </div>
+    <figure><img src="evidence/p3-20261007/08-ign-task-ledger.png" alt="ign 任务台账"><figcaption>08-ign-task-ledger.png · O-IGN 任务台账：0011~0017 全部「完成 / 剧本汇总判定」，exit 0</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/09-ign-task-log-recap.png" alt="ign 原始日志 PLAY RECAP"><figcaption>09-ign-task-log-recap.png · 子任务日志行（只读子表 · 游标右界 229）尾部 PLAY RECAP 与终态回填</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/12-ign-facade-ledger.png" alt="ign 门面受理台账"><figcaption>12-ign-facade-ledger.png · 门面受理台账（REP-14）：固定过滤「来源任务标识非空」，与任务台账共用同一查询面</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/11-ign-ops-overview.png" alt="ign 运行观测"><figcaption>11-ign-ops-overview.png · 运行观测：执行位可用、命令面/工作根只读、结论依据分布、运行参数（REF-*）</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/10-ign-version-ledger.png" alt="ign 交付版本台账"><figcaption>10-ign-version-ledger.png · 交付版本台账：VER-20261006-0001 <code>kubeasz-3.7.0-k8s-1.36.3</code>，组件版本组与本轮装机日志逐项吻合</figcaption></figure>
+    <figure><img src="evidence/p3-20261007/13-ign-executor-ledger.png" alt="ign 执行机台账"><figcaption>13-ign-executor-ledger.png · 执行机台账：<code>EXE-20261004-0001 local-ignition</code>（本地 · 就绪 · 上限 4 · 能力标签 DEPLOY/SKOPEO/BACKUP/PREFLIGHT/OFFLINE）</figcaption></figure>
+    <div class="note"><b>观察项 OBS-P3-01：</b>被引用的交付版本 <code>VER-20261006-0001</code> 状态仍为「草稿」，运行观测的「可用版本 0/2」也为此值；本轮安装能成功是因为命令面用的是控制机上<b>已就位的 kubeasz 3.7.0</b>，版本台账只承担登记与契约（组件版本组冻结）。是否需要「非可用版本不得被交付引用」的前置校验，模型里目前没有这条规则 —— <b>不擅自补</b>，作为待裁定项列出（见 §8）。<b>〔同日续记〕</b>该项已由用户裁定「处理」并落为 O-IGN <code>v1.2</code> 批的 <code>R-19</code> 门槛 —— 处置口径、证据与后果见 §8 末段；<b>本用例取证时的放行行为属改版前事实，保留不回改</b>。</div>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">TC-P3-08</span><span class="nm">探活登记与聚合健康翻转</span><span class="rule">FUNC-26/27 · R-08 防抖 · REF-03/REF-11 · INV-34/INV-36</span></div>
+  <div class="bd">
+    <div class="grid">
+      <span class="lb">步骤</span><span>每轮先<b>真取</b> apiserver（<code>kubectl get --raw /readyz</code>）与 Ready 节点数，再按实测值登记人工探活；连续三轮后查聚合健康页。</span>
+      <span class="lb">实测</span><span>连续登记成功探活共 4 条记录（<code>00:52:31 / 00:53:35 / 00:53:36 / 00:53:37</code>，结论均 HEALTHY），集群健康在连续成功数达到恢复阈值时由 UNKNOWN 翻转 HEALTHY —— 阈值实测配置值：<code>clc.probe_recover_threshold=3</code>(REF-11)、<code>clc.probe_fail_threshold=3</code>(REF-03)；聚合健康行：<code>p3-real-k8s-000118(CLU-20261007-0001) · RUNNING · 健康 · EXE-20261004-0001 · 节点资产 1/1 · 最近探活 2026-10-07 00:53:37</code>。</span>
+      <span class="lb">判定</span><span><span class="pill ok">通过</span> 探活是「人工登记 + 防抖」口径（非自动探测），本轮登记值全部来自实测，未填乐观值。</span>
+    </div>
+    <figure><img src="evidence/p3-20261007/07-clc-aggregate-health.png" alt="clc 聚合健康"><figcaption>07-clc-aggregate-health.png · 聚合健康（FUNC-27）真实例行：状态 RUNNING、集群自身健康、交付执行机引用、节点资产 1/1、最近探活时间</figcaption></figure>
+  </div>
+</div>
+
+<div class="case">
+  <div class="hd"><span class="id">TC-P3-09 / 10</span><span class="nm">真实例可用性：Pod 清单回读 + 集群内 DNS/Service 功能探针</span><span class="rule">用户验收要求「对创建成功的 k8s 执行 kubectl get pod -A」「创建真正可使用的集群」</span></div>
+  <div class="bd">
+    <div class="grid">
+      <span class="lb">步骤</span><span>① 在节点 <code>kasz-node2</code> 上执行 <code>kubectl get pod -A -o wide</code> 与 <code>get nodes -o wide</code>；② 用内网仓库里的 busybox 起一次性 Pod，在 Pod 内 <code>nslookup kubernetes.default.svc.cluster.local</code>、<code>nc -zv 10.68.0.1 443</code>；③ 控制机侧 <code>kubectl get --raw /readyz</code> 与 <code>kubectl top nodes</code>；④ 探针 Pod 用完即删。</span>
+      <span class="lb">实测</span><span>见 §5 原文：4 个系统 Pod 全 <code>1/1 Running</code>；节点 <code>Ready / master / v1.36.3 / containerd://2.2.1</code>；DNS 解析出 <code>10.68.0.1</code>、Service 端口 <code>open</code>；<code>/readyz=ok</code>；<code>top nodes</code> 有真实数值。</span>
+      <span class="lb">判定</span><span><span class="pill ok">通过</span> 交付物是一个<b>可用</b>集群，不只是状态机绿灯。</span>
+    </div>
+  </div>
+</div>
+
+<h2 id="raw">5 节点侧原始回读（取证原文）</h2>
+<div class="card">
+<p style="margin-top:0">取数位置：集群控制机 <code>192.168.3.200</code>；<code>[A][B][C]</code> 在节点容器 <code>kasz-node2</code>（172.28.0.12）内执行，<code>kubectl</code> 位于 <code>/opt/kube/bin</code>（需显式注入 PATH）；<code>[D]</code> 在 <code>opic-ign-app</code> 容器与节点侧用 admin.conf 执行。原文同步存 <code>evidence/p3-20261007/raw-evidence.txt</code>。</p>
+<div class="evi">== [A] kubectl get pod -A -o wide ==
+NAMESPACE     NAME                              READY   STATUS    RESTARTS   AGE   IP            NODE                            NOMINATED NODE   READINESS GATES
+kube-system   coredns-775cd5fdd4-wbxls          1/1     Running   0          18m   10.200.0.2    clu-20261007-0001-172-28-0-12   &lt;none&gt;           &lt;none&gt;
+kube-system   kube-flannel-ds-476pw             1/1     Running   0          18m   172.28.0.12   clu-20261007-0001-172-28-0-12   &lt;none&gt;           &lt;none&gt;
+kube-system   metrics-server-74558b4d96-2nbhk   1/1     Running   0          18m   10.200.0.3    clu-20261007-0001-172-28-0-12   &lt;none&gt;           &lt;none&gt;
+kube-system   node-local-dns-68q7h              1/1     Running   0          18m   172.28.0.12   clu-20261007-0001-172-28-0-12   &lt;none&gt;           &lt;none&gt;
+
+== [B] kubectl get nodes -o wide ==
+NAME                             STATUS   ROLES    AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION            CONTAINER-RUNTIME
+clu-20261007-0001-172-28-0-12   Ready    master   18m   v1.36.3   172.28.0.12   &lt;none&gt;        Ubuntu 24.04.5 LTS   7.0.0-31-generic (amd64)  containerd://2.2.1
+
+== [C] 集群内功能探针（busybox 一次性 Pod，验证后已删除） ==
+[1] nslookup kubernetes.default.svc.cluster.local  →  Address: 10.68.0.1
+[2] nc -zv 10.68.0.1 443                           →  10.68.0.1 (10.68.0.1:443) open
+[3] wget https://kubernetes.default.svc.cluster.local/healthz  →  wget: TLS error from peer (alert code 47)
+    说明：探针镜像不含 OPIC 内置 CA，属<b>探针限制</b>而非集群缺陷；同一 healthz 路径由 [D] 的 admin.conf 通道覆盖验证。
+    pod phase = Succeeded
+
+== [D] O-IGN 控制容器侧 ==
+/etc/kubeasz/clusters/CLU-20261007-0001/：hosts、config.yml、.ign-delivery.json、
+  clu-20261007-0001-172-28-0-12-kubectl.kubeconfig、…-kubelet.kubeconfig、
+  kube-controller-manager.kubeconfig、kube-proxy.kubeconfig、backup/
+.ign-delivery.json：managed=true、hosts_sha256=9f3270…、config_sha256=689656…、
+  cluster_ref=CLU-20261007-0001、note=「按门面登记事实派生（第 07 步；etcd 1/控制面 1/工作 1）」、
+  service_cidr=10.68.0.0/16、pod_cidr=10.200.0.0/16、dns_domain=cluster.local、image_mirror=easzlab.io.local:5000
+kubectl get --raw /readyz  →  ok
+kubectl top nodes → clu-20261007-0001-172-28-0-12 | 637m | 7% | 5191Mi | 33%
+
+== [E] ign 按门面登记事实生成的 ansible hosts（关键行，密钥只出现路径） ==
+[etcd]        172.28.0.12 k8s_nodename=clu-20261007-0001-172-28-0-12
+[kube_master] 172.28.0.12 k8s_nodename=clu-20261007-0001-172-28-0-12
+[kube_node]   172.28.0.12 k8s_nodename=clu-20261007-0001-172-28-0-12
+[all:vars]
+CONTAINER_RUNTIME="containerd"   CLUSTER_NETWORK="flannel"   PROXY_MODE="iptables"
+SERVICE_CIDR="10.68.0.0/16"      CLUSTER_CIDR="10.200.0.0/16"
+CLUSTER_DNS_DOMAIN="cluster.local"          ← REF-19 生效值（Q-73 判据之一）
+NODE_PORT_RANGE="30000-32767"    SECURE_PORT="6443"
+bin_dir="/opt/kube/bin"  base_dir="/etc/kubeasz"  cluster_dir="{{ base_dir }}/clusters/CLU-20261007-0001"
+ca_dir="/etc/kubernetes/ssl"     ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_user=root            ansible_ssh_private_key_file=/opt/opic/ssh/id_rsa</div>
+</div>
+
+<h2 id="deployfacts">6 部署侧留存事实（非代码口径，必须如实带走）</h2>
+<div class="card">
+<table>
+<thead><tr><th>事实</th><th>影响</th><th>处置</th></tr></thead>
+<tbody>
+<tr><td><code>opic-ign-app</code> 每次 recreate 后需重放：
+<code>docker network connect --ip 172.28.0.13 opic-k8s-lab opic-ign-app</code>；
+重建镜像仓库 sidecar：<code>docker rm -f opic-ign-mirror &amp;&amp; docker run -d --name opic-ign-mirror --restart unless-stopped --network container:opic-ign-app -v /opt/kube/registry:/var/lib/registry:ro registry:2</code></td>
+<td>不重放则 01~07 在 prepare 步（<code>easzlab.io.local</code> 写入）与 addon 拉镜像（<code>easzlab.io.local:5000/…</code> 硬编码）处失败</td>
+<td><span class="pill env">部署侧手工步骤</span> 属环境装配，不进代码；生产化应下沉到 compose/部署清单（待后续）</td></tr>
+<tr><td>compose 起停须先 <code>set -a; . /opt/opic-prod/.env; set +a</code> 再 <code>docker compose up -d</code></td><td>否则 <code>NATS_PASSWORD</code> / <code>PG_ADMIN_PASSWORD</code> 缺失导致插值失败</td><td><span class="pill env">操作口径</span></td></tr>
+<tr><td>node2 的 <code>umount /etc/hosts</code>、<code>umount /etc/hostname</code> 修复<b>在容器重启后失效</b>（Docker 会重新 bind mount）</td><td>ansible 原子 rename 报 <code>[Errno 16] Device or resource busy</code>，01 步必失败</td><td><span class="pill obs">已知回归点</span> 控制器侧 <code>ANSIBLE_UNSAFE_WRITES</code> 已实测<b>无效</b>（变量在目标机求值）；生产形态应使用真实主机而非 Docker bind-mount 节点</td></tr>
+<tr><td>node2 需 <code>apt-get install kmod dbus</code> + <code>systemctl unmask systemd-modules-load</code> + 存在 <code>/usr/lib/nginx/modules/ngx_stream_module.so</code></td><td>缺任一项分别在 01（modprobe）与 04（kube-lb dlopen）失败</td><td><span class="pill env">节点先决条件</span> 已在 06 报告失败留痕中逐条命中</td></tr>
+<tr><td>旧集群目录 <code>/etc/kubeasz/clusters/CLU-20261007-0001</code>（换 SSH 用户前生成）被 <code>mv</code> 至 <code>/tmp/kubeasz-quarantine/CLU-20261007-0001-pre-sshuser</code>，<b>未删除</b></td><td>接管标记 <code>.ign-delivery.json</code> 命中即幂等复用，不会重生成 hosts —— 变更 SSH 用户后必须清理才能生效</td><td><span class="pill ok">可回滚</span> 隔离区文件保留</td></tr>
+<tr><td>运行镜像从 alpine → ubuntu 24.04，且装<b>整包 ansible</b>（非 <code>ansible-core</code>）并在构建期预建 <code>/usr/bin/ezctl</code>、<code>/usr/bin/ezdown</code> 软链</td><td>裸 core 缺 <code>ansible.posix</code>/<code>community.general</code>（<code>pam_limits</code>/<code>sysctl</code>/<code>modprobe</code>）在 01 步即退 1；01 末的控制机本地建链任务对非 root 会 EACCES</td><td><span class="pill ok">已入库（本地工作树）</span> 未提交；版本与 3.200 宿主同源（ansible 9.2.0 / core 2.16.3）</td></tr>
+<tr><td>compose 新增 <code>IGN_DELIVERY_SSH_USER</code> 透传行</td><td>不透传则命令面用容器进程用户 <code>app</code> 登录节点，<code>Permission denied (publickey)</code></td><td><span class="pill ok">已入库（本地工作树）</span> 未提交</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="q73">7 Q-73 判据与裁定（已收口）</h2>
+<div class="card">
+<p style="margin-top:0"><b>问题</b>：集群内 DNS 后缀（REF-19 <code>deploy_dns_domain=cluster.local</code>）与上游登记的「访问端点域名」（<code>clc_cluster.cluster_dns_domain = p3-lab.local</code>）是否同源？若同源，需把端点域名扩进 <code>FUNC-34</code> 请求体让 ign 生成 config.yml 时使用；若不同源，二者各管各的。</p>
+<div class="evi">实测证据（本轮真实例）
+1) ign 交付配置标记 .ign-delivery.json 的 dns_domain = cluster.local（REF-19 生效值）
+2) Pod 内 nslookup kubernetes.default.svc.cluster.local → 10.68.0.1
+   ⇒ 集群内服务后缀<b>实际生效为 cluster.local</b>，不是 p3-lab.local
+3) 生成的 kubeconfig：server: https://172.28.0.12:6443（走 master <b>IP</b>）
+4) 节点上 api.p3-lab.local <b>不可解析</b>（NO_RESOLVE，/etc/hosts 无条目）
+   而 clc 台账「主控入口」显示 https://api.p3-lab.local:6443</div>
+<p><b>裁定（2026-10-07，用户「按 AI 建议处理」）：判「不同源」，<code>FUNC-34</code> 请求体不扩该列。</b>判据 3) 是决定性的 —— kubeconfig 的 <code>server:</code> 走 master 地址，端点域名与本域后缀<b>本来就两条轴</b>：上游那个值是 <code>O-CLC</code> 按自身登记字段 <code>cluster_dns_domain</code> 派生的台账/证书形态值，ign 侧 <code>REF-19</code> 只决定集群内 <code>CLUSTER_DNS_DOMAIN</code> 落盘。故判据 4) 的不可解析<b>不属"因后缀不一致而不可解析"</b>（传后缀也解决不了：需要外部 DNS / VIP，或非 HA 单 master 场景直接用 IP），<code>Q-73</code> 预设的再审触发条件不成立。代价如实登记：非 HA 单 master 台账展示的端点域名不可直接解析，属部署事实而非模型缺陷。</p>
+<p><b>收口落点（零业务逻辑改动）</b>：① 两域 <code>.md</code> 事实源 —— <code>O-IGN</code> 侧正文 <code>REF-19</code> 边界段与《编制说明》E.1 该行由 <code>[待确认]</code> 改 <code>[已确认]</code>（含本节五项证据），<code>O-CLC</code> 侧正文 <code>R-19</code> 下方 <code>ADD_NODE</code> 偏差注记的同批联动项裁定为<b>不改全量重派</b>；② 本体 <code>M3</code> <code>REF-19</code> description（<code>models/</code> 与 <code>design/yaml/</code> 两份同步）；③ ign 运行观测 <code>/ign/ops</code> 的 <code>REF-19</code> 参数说明文案（3.200 上镜像仍是旧文案，<b>未随本次重部署</b>，需要时另行部署）。代码侧核实：clc <code>submitReq</code> 结构体本就没有该字段 ⇒ 与裁定一致，<b>无需改动</b>。</p>
+<p style="margin-bottom:0"><b>连带项状态</b>：两域共 4 份 HTML 交付件已随本收口批按 <code>v1.1.1</code> 重导（重导与校验记录见两域《编制说明》E.4）。本收口批<b>不含</b> <code>OBS-P3-01</code> 的裁定；该观测已于<b>同日</b>按用户裁定「处理」并在 O-IGN 侧升版 <code>v1.2</code> 重导两份 HTML —— 处置记录见 §8 末段。</p>
+</div>
+
+<h2 id="limits">8 边界与未覆盖项</h2>
+<div class="card">
+<table>
+<thead><tr><th>项</th><th>说明</th><th>性质</th></tr></thead>
+<tbody>
+<tr><td>单控制面、无 HA/VIP</td><td>本轮只登记 1 个控制面节点，未验证多 master、<code>api</code> 域名 + LB 漂移，也未验证 kubeasz <code>08</code> 之后的扩容/升级/拆除族</td><td><span class="pill obs">未覆盖</span></td></tr>
+<tr><td>UPGRADE / BACKUP / RESTORE / STOP / START / DESTROY 的真机路径</td><td>状态机与门面无头测试已覆盖，真 kubeasz 上本轮只跑了 INSTALL 族；DESTROY 未对活体真集群执行（破坏性动作按约定不做默认动作）</td><td><span class="pill obs">未覆盖</span></td></tr>
+<tr><td>交付版本状态前置校验</td><td>引用的 <code>VER-20261006-0001</code> 为草稿仍可被交付（见 OBS-P3-01）；<b>本报告所测镜像不含该门槛</b> —— 门槛于同日 v1.2 批落地（<code>R-19</code>），需重部署后方在 3.200 生效</td><td><span class="pill ok">已处理</span></td></tr>
+<tr><td>Docker 型节点的可重复性</td><td>bind-mount 的 <code>/etc/hosts</code>、<code>/etc/hostname</code> 问题属测试夹具形态限制；生产应落在真机/虚机节点</td><td><span class="pill env">环境限制</span></td></tr>
+<tr><td>低危 DEF-03 / DEF-04</td><td>AI 助理欢迎语底座残留、登录页底座文案；用户未要求处理，仍未改</td><td><span class="pill obs">挂起</span></td></tr>
+<tr><td>提交状态</td><td>两仓工作树改动（ign 30 / clc 19 文件）<b>未 add、未 commit、未 push</b>；本报告与截图、原始取证文件同属交付物，未入库</td><td><span class="pill obs">遵指令</span></td></tr>
+</tbody>
+</table>
+<p><b>OBS-P3-01 处置记录（2026-10-07 同日续记，用户裁定「处理」）</b>：按 spec → 本体 → 代码 顺序落地为跨对象规则 <b><code>R-19</code> 交付版本引用的可用性门槛</b> —— 安装族受理携带的交付版本引用，除「目录内可解析」（<code>INV-33</code>）外须命中<b>未归档且就绪及之后</b>（就绪 / 预推中 / 已预推 / 部分预推放行；草稿 / 下载中 / 失败 / 已归档 ⇒ 治理拒绝 <code>SYS9103</code>，不建任务行、不占容量、留痕进门面受理台账）。判据<b>不是本域自创</b>：上游 <code>O-CLC</code> 的 <code>REF-05</code> 早已声明同一门槛，本域此前只校验可解析、未校验可用，属两域口径缺口的收口。落点：O-IGN 正文 3.3.3 / 3.3.4 / 3.4 与《编制说明》A.2 / C.2 / D.2 / E.2.3 / E.3、<code>M3</code> <code>R-19</code> 与 <code>M2 FUNC-34</code> 前置条件（<code>models/</code> 与 <code>design/yaml/</code> 两份同步）、受理侧版本引用解析路径（<code>go build</code> / <code>go vet</code> / <code>go test ./internal/...</code> 全绿，新增 4 条用例覆盖「READY 放行 + 派生组件版本面」「四种不可用状态各自拒绝」「未登记走 <code>INV-33</code> 口径」「门面端到端拒绝且不留任务行」）。</p>
+<p style="margin-bottom:0"><b>必须如实说明的后果</b>：本域阶段三不代理真实下载通道（<code>B-AUTO-01</code> 未接入），故「就绪」状态在当前环境<b>无法经应用推进达成</b> ⇒ 重部署后，引用草稿 / 下载中版本的<b>新装机</b>会被治理拒绝；已建成的 <code>CLU-20261007-0001</code> 不受影响（节点增删 / 销毁族不带版本面，且引用为空的路径不触门槛）。跨中心可选池（<code>FUNC-08</code> / <code>REP-03</code> 只出已预推与部分预推）比门槛更窄，方向安全，本域不改该池口径。</p>
+</div>
+
+<footer>
+执行/取证：Qoder 主会话（浏览器经 Tabbit 驱动 Playwright，真实登录表单与界面操作）· 取证时间 2026-10-07 00:01~01:07（Asia/Shanghai）<br>
+截图与原文：<code>ignition-center/docs/evidence/p3-20261007/</code>（13 张 PNG + <code>raw-evidence.txt</code>）· 上一份夹具口径报告：<code>Web测试报告-点火与集群中心-2026-10-06.html</code><br>
+口令纪律：全程未在任何输出中打印密钥/令牌明文；kubeconfig 与 <code>.ign-delivery.json</code> 仅摘录字段名与非敏感摘要值。
+</footer>
+
+</div>
+</body>
+</html>

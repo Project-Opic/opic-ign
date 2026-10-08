@@ -8,8 +8,9 @@
 //     "node already existed" 的远程困惑 ⇒ 安装期配置由本域派生，节点增删期由命令面维护；
 //   - `add-node` 只取 `$2` 一个地址（多地址须走 `add-nodes`，见 ign_exec.go 的 argv 渲染）。
 //
-// 治理纪律：交付配置的**派生依据**是门面请求体里的登记事实（节点清单/版本引用）加本域
-// 部署参数缺省面（REF-17~25），不是上游下发的模板文本；私钥只以路径进入 inventory，
+// 治理纪律：交付配置的**派生依据**是门面请求体里的登记事实（节点清单/版本引用/面标识）加本域
+// 四层取值（R-20：集群覆写 → 交付版本派生 → 参数面模板 → 平台缺省面，权威实现只在
+// resolveParamFace 一处），不是上游下发的模板文本；私钥只以路径进入 inventory，
 // 绝不进 argv、不进日志、不出域（R-12 同源）。接管标记 .ign-delivery.json 让"这份配置
 // 是不是本域派生的"成为可判定事实 —— 非本域产物一律拒绝改写（不静默覆盖人工配置）。
 package service
@@ -712,6 +713,19 @@ type ignAlignReq struct {
 	StepCode   string
 	Topo       ignTopology
 	Params     ignDeployParams
+	// 本次生效取值所依据的两条登记标识（接管标记快照的组成部分）：下次受理不带标识时
+	// 由 ignClusterFaceContext 回落读它，R-25 ① 的引用来源也只在它被快照后才可反查。
+	ParamTemplateRef string
+	VersionRef       string
+}
+
+// ignFaceApplied 一次对齐对覆写层的消费事实（INV-42 / R-21 回填的判据）。
+// Wrote 只在 hosts/config 真被产出或刷新的那条路径为真 —— 沿用已对齐配置、节点增删只核对
+// 在册事实都不算消费，回填它等于把"没动过文件的那一次"记成生效。
+type ignFaceApplied struct {
+	ClusterRef string
+	Wrote      bool
+	Face       *paramFaceView
 }
 
 // ignNewClusterSkeleton 以本域私有手段执行发行包的建目录动作（internal 动作层、不登记任务、
@@ -728,14 +742,23 @@ func ignNewClusterSkeleton(clusterRef string) bool {
 	return errH == nil && h != "" && errC == nil && c != ""
 }
 
-// ignAlignClusterInventory 安装族动作的交付配置前置（B-AUTO-15 的落点，对齐三态见 R-18）：
+// ignAlignClusterInventory 安装族动作的交付配置前置（B-AUTO-15 的落点，对齐三态见 R-18）。
+// 只关心对齐结论说明的调用方用它；受理侧还需要"本次是否真产出/刷新了交付配置"以便按
+// INV-42 回填覆写追溯对，走 ignAlignClusterInventoryOutcome。
+func ignAlignClusterInventory(req ignAlignReq) (string, error) {
+	_, note, err := ignAlignClusterInventoryOutcome(req)
+	return note, err
+}
+
+// ignAlignClusterInventoryOutcome 对齐主体（B-AUTO-15 的落点，对齐三态见 R-18）：
 // ① 接管 —— 目录缺失 ⇒ 先用发行包建目录动作产出模板形态（版本键由发行包自身决定，本域不猜版本号），再按登记事实渲染 hosts/config.yml 并写接管标记；
 // ② 幂等 —— 已有本域标记 ⇒ 带清单即逐字段跟随台账与参数改写（同事实重入结论不变），不带清单即沿用已对齐配置并核对指纹（重试 / 续派场景，指纹不符即配置事实错误）；
 // ③ 冲突 —— 有清单（或已对齐文件）而无本域标记 ⇒ 拒绝改写，人工或其他工具的既有事实不可被静默覆盖。
-// 返回可用于任务注记行的对齐说明。
-func ignAlignClusterInventory(req ignAlignReq) (string, error) {
+// 返回覆写消费事实（INV-42 回填判据）+ 可用于任务注记行的对齐说明。
+func ignAlignClusterInventoryOutcome(req ignAlignReq) (ignFaceApplied, string, error) {
+	applied := ignFaceApplied{ClusterRef: req.ClusterRef}
 	if !ignClusterIDRe.MatchString(req.ClusterRef) {
-		return "", Fail(errcode.ErrParam, "关联集群标识 %q 不符合格式白名单（INV-33）", req.ClusterRef)
+		return applied, "", Fail(errcode.ErrParam, "关联集群标识 %q 不符合格式白名单（INV-33）", req.ClusterRef)
 	}
 	dir := ignClusterDir(req.ClusterRef)
 	exists := ignDirExists(dir)
@@ -745,31 +768,31 @@ func ignAlignClusterInventory(req ignAlignReq) (string, error) {
 	confText, confErr := ignReadClusterFile(dir, "config.yml")
 	if req.Topo.IsEmpty() {
 		if hostsErr != nil || confErr != nil {
-			return "", Fail(errcode.ErrState,
+			return applied, "", Fail(errcode.ErrState,
 				"集群交付配置尚未生成（clusters/%s/hosts|config.yml 缺失）且本次受理未带节点清单：安装族首步必须携带节点清单（FUNC-34/Q-72）",
 				req.ClusterRef)
 		}
 		m, err := ignLoadManifest(dir)
 		if err != nil {
-			return "", err
+			return applied, "", err
 		}
 		if m == nil {
-			return "", ignInventoryConflict(req.ClusterRef, "无接管标记")
+			return applied, "", ignInventoryConflict(req.ClusterRef, "无接管标记")
 		}
 		if m.HostsSHA256 != ignSHA256(hostsText) || m.ConfigSHA256 != ignSHA256(confText) {
-			return "", Fail(errcode.ErrState,
+			return applied, "", Fail(errcode.ErrState,
 				"集群交付配置与本域派生事实不符（clusters/%s 下的文件在接管后被改动）：R-15 受理即刻拒绝，须清理集群目录后带节点清单重新受理",
 				req.ClusterRef)
 		}
-		return "交付配置沿用（clusters/" + req.ClusterRef + " 已由本域按登记事实对齐，本次未带清单）", nil
+		return applied, "交付配置沿用（clusters/" + req.ClusterRef + " 已由本域按登记事实对齐，本次未带清单）", nil
 	}
 
 	if !exists || hostsErr != nil || confErr != nil {
 		if ok, why := ignLocalExecAvailable(); !ok {
-			return "", Fail(errcode.ErrState, "%s（R-15）", why)
+			return applied, "", Fail(errcode.ErrState, "%s（R-15）", why)
 		}
 		if !ignNewClusterSkeleton(req.ClusterRef) {
-			return "", Fail(errcode.ErrState,
+			return applied, "", Fail(errcode.ErrState,
 				"发行包未产出 clusters/%s 的 hosts/config.yml（建目录动作不可用或模板缺失）：R-15 受理即刻拒绝",
 				req.ClusterRef)
 		}
@@ -779,9 +802,9 @@ func ignAlignClusterInventory(req ignAlignReq) (string, error) {
 	}
 	if !seeded {
 		if m, err := ignLoadManifest(dir); err != nil {
-			return "", err
+			return applied, "", err
 		} else if m == nil {
-			return "", ignInventoryConflict(req.ClusterRef, "无接管标记")
+			return applied, "", ignInventoryConflict(req.ClusterRef, "无接管标记")
 		}
 	}
 
@@ -790,17 +813,17 @@ func ignAlignClusterInventory(req ignAlignReq) (string, error) {
 	p.NodeAddrs = dedupStrings(append(append([]string{}, ignAddrList(req.Topo.Node)...), p.MasterAddrs...))
 	newHosts, err := ignRenderHosts(hostsText, req.ClusterRef, req.Topo, p)
 	if err != nil {
-		return "", err
+		return applied, "", err
 	}
 	newConf, err := ignMergeConfigYAML(confText, req.ClusterRef, p)
 	if err != nil {
-		return "", err
+		return applied, "", err
 	}
 	if err := ignWriteAtomic(filepath.Join(dir, "hosts"), newHosts, 0o644); err != nil {
-		return "", Fail(errcode.ErrState, "hosts 写入失败：%v（R-15）", err)
+		return applied, "", Fail(errcode.ErrState, "hosts 写入失败：%v（R-15）", err)
 	}
 	if err := ignWriteAtomic(filepath.Join(dir, "config.yml"), newConf, 0o600); err != nil {
-		return "", Fail(errcode.ErrState, "config.yml 写入失败：%v（R-15）", err)
+		return applied, "", Fail(errcode.ErrState, "config.yml 写入失败：%v（R-15）", err)
 	}
 	m := ignManifest{
 		Managed:      true,
@@ -814,19 +837,31 @@ func ignAlignClusterInventory(req ignAlignReq) (string, error) {
 		PodCIDR:     p.PodCIDR,
 		DNSDomain:   p.DNSDomain,
 		ImageMirror: p.ImageMirror,
-		Nodes:       p.NodeAddrs,
+		// 列表型字段的整项快照（R-22）：只存首项会让"下次将生效"与"当前落盘"在多看板间对不上
+		ImageMirrors: p.MirrorHostList(),
+		Nodes:        p.NodeAddrs,
+		// 当次递交的两条登记标识：下次受理不带标识时的默认取值上下文（R-20）与 R-25 ① 的反查依据
+		ParamTemplateRef: strings.TrimSpace(req.ParamTemplateRef),
+		VersionRef:       strings.TrimSpace(req.VersionRef),
 	}
 	b, _ := json.MarshalIndent(m, "", "  ")
 	if err := ignWriteAtomic(filepath.Join(dir, ignInventoryManifest), string(b)+"\n", 0o644); err != nil {
-		return "", Fail(errcode.ErrState, "接管标记写入失败：%v（R-15）", err)
+		return applied, "", Fail(errcode.ErrState, "接管标记写入失败：%v（R-15）", err)
 	}
 	verb := "按登记事实生成"
 	if seeded {
 		verb = "以发行包模板打底后" + verb
 	}
-	return fmt.Sprintf("交付配置%s：hosts（etcd %d / 控制面 %d / 工作 %d 台）、config.yml（集群名 %s，网络 %s，Service %s，Pod %s）",
+	note := fmt.Sprintf("交付配置%s：hosts（etcd %d / 控制面 %d / 工作 %d 台）、config.yml（集群名 %s，网络 %s，Service %s，Pod %s）",
 		verb, len(req.Topo.Etcd), len(req.Topo.Master), len(req.Topo.Node),
-		req.ClusterRef, p.NetworkPlugin, p.ServiceCIDR, p.PodCIDR), nil
+		req.ClusterRef, p.NetworkPlugin, p.ServiceCIDR, p.PodCIDR)
+	if len(m.ParamTemplateRef) > 0 {
+		note += "（参数面模板 " + m.ParamTemplateRef + "）"
+	}
+	// 文件已按四层取值落盘 ⇒ 命中覆写层的坐标即被本次消费（INV-42 追溯对的成对回填判据）；
+	// 生效取值轨迹由调用方（受理侧 ignAlignPrecondition）挂到 applied.Face。
+	applied.Wrote = true
+	return applied, note, nil
 }
 
 func ignInventoryConflict(clusterRef, why string) error {
@@ -1026,34 +1061,8 @@ var ignVersionDeliverable = map[string]bool{
 	"PARTIALLY_PREPUSHED": true,
 }
 
-// ignApplyVersionRef 交付版本派生（版本引用是跨域标识，必须能在本域解析且可用，否则治理拒绝）。
-func ignApplyVersionRef(db *gorm.DB, p *ignDeployParams, versionRef string) error {
-	versionRef = strings.TrimSpace(versionRef)
-	if versionRef == "" {
-		return nil
-	}
-	row, err := qOne(`SELECT * FROM delivery_version
-		WHERE flag = 1
-		  AND (version_no = ? OR LOWER(name) = LOWER(?))
-		ORDER BY id DESC`, versionRef, versionRef)
-	if err != nil {
-		return err
-	}
-	if row == nil {
-		return ignGovernanceRefuse(fmt.Sprintf(
-			"交付版本引用 %q 在本域无登记（INV-33 跨域只存标识：标识必须可解析，未登记即治理拒绝）", versionRef))
-	}
-	status := Str(row["version_status"])
-	if !ignVersionDeliverable[status] {
-		return ignGovernanceRefuse(fmt.Sprintf(
-			"交付版本引用 %q 的状态为「%s」（%s），不在可交付范围（R-19：须未归档且就绪及之后 —— 就绪由发行包下载执行达成）",
-			versionRef, ignVersionStatusLabel(status), status))
-	}
-	return ignApplyVersionRow(row, p)
-}
-
 // ignApplyVersionRow 把已解析、已判态的交付版本行灌进渲染面（resolveParamFace 第 2 层字段映射的
-// 唯一实现；受理侧 ignApplyVersionRef 读同一份映射 —— 两份映射必然漂移，漂移后预检就是误导源）。
+// 唯一实现；版本引用能否被交付引用的判定在 ignResolveVersionRow，两处读同一份事实）。
 // 版本行里没有的登记事实不覆盖下层已取到的值（"命中不到就跳过"，与 ignVersionFaceHits 的键域口径一致）。
 func ignApplyVersionRow(row map[string]any, p *ignDeployParams) error {
 	if row == nil {
@@ -1082,15 +1091,21 @@ func ignApplyVersionRow(row map[string]any, p *ignDeployParams) error {
 	return nil
 }
 
-// ignProfileForAction 受理侧的交付参数面：缺省面（REF-17~25）→ 交付版本派生 → 形态校验。
-// 版本引用为空即沿用发行包自身版本（本域不猜版本号）；引用不可解析（INV-33）或不可用（R-19）即治理拒绝。
-func ignProfileForAction(versionRef string) (ignDeployParams, error) {
-	p := ignDeployProfileOf(store.DB)
-	if err := ignApplyVersionRef(store.DB, &p, versionRef); err != nil {
-		return p, err
+// ignProfileForAction 受理侧的交付参数面：四层取值（R-20 唯一实现 resolveParamFace）+ 一次形态收口。
+//
+// 取值上下文 = clusterRef（覆写层的天然坐标）+ 本次请求携带的面标识（缺省回落到接管标记里
+// 快照的那张牌）+ 交付版本引用。拓扑面（节点成员与角色）仍只来自请求体节点清单（Q-72），
+// 两条轴不同轴：这里产出的只是 hosts/[all:vars] 与 config.yml 的受管键取值。
+// 治理拒绝口径由求值器与 ignFaceGateUsable 一处实现（模板非启用态 / 版本不可解析 INV-33 /
+// 不可交付 R-19），形态校验由 ignFaceEffectiveUsable 一处跑一次（R-23）—— 受理侧不再另写一套。
+func ignProfileForAction(clusterRef, paramTemplateRef, versionRef string) (*paramFaceView, error) {
+	tplRef, verRef := ignFaceRequestContext(clusterRef, paramTemplateRef, versionRef)
+	view, err := resolveParamFace(store.DB, clusterRef, "", tplRef, verRef)
+	if err != nil {
+		return nil, err
 	}
-	if err := ignValidateDeployParams(p); err != nil {
-		return p, err
+	if err := ignFaceEffectiveUsable(view, view.Params); err != nil {
+		return view, err
 	}
-	return p, nil
+	return view, nil
 }

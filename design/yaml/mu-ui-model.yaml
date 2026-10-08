@@ -1061,7 +1061,7 @@ screens:
     required: false
     dataBinding: ParamTemplateItem.fieldValue
     dataSource: REP-17
-    valueNote: 面标识为空 ⇒ 该列整列显示「—（未携带面标识，本层跳过）」，不回落到默认模板（R-20）
+    valueNote: 该列显示的是本次取值上下文里那张牌的值 —— 未携带面标识时读接管标记快照里的那张牌（与受理侧同处解析，两侧不得各写一套）；两者都空 ⇒ 整列显示「—（未携带面标识，本层跳过）」，不回落到默认模板（R-20）
   - id: el05
     type: TEXT
     label: 交付版本派生值（第 2 层）

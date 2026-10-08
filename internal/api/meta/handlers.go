@@ -55,6 +55,13 @@ func Rules(c *gin.Context) {
 	c.JSON(200, errcode.OK(out))
 }
 
+// ParamFace GET /api/meta/ign-param-face 参数面字段目录（面定义表的只读投影）。
+// 与 /meta/dictionaries、/meta/rules 同一档：登录即可、不新建权限码、不建 M2 行为（它是元数据，不是业务读）。
+// 出口只有键的形态与归属，没有任何取值（INV-08）——界面因此拿不到"第二份真相"。
+func ParamFace(c *gin.Context) {
+	c.JSON(200, errcode.OK(service.ParamFaceCatalog()))
+}
+
 func orDefaultStr(v any, def any) any {
 	if v == nil || service.Str(v) == "" {
 		return def

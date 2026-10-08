@@ -24,6 +24,8 @@ import IgnImagePage from '../pages/ign/IgnImagePage'
 import IgnExecutorPage from '../pages/ign/IgnExecutorPage'
 import IgnTlsPage from '../pages/ign/IgnTlsPage'
 import IgnTaskPage from '../pages/ign/IgnTaskPage'
+import IgnParamTemplatePage from '../pages/ign/IgnParamTemplatePage'
+import IgnClusterConfigPage from '../pages/ign/IgnClusterConfigPage'
 import IgnLogPage from '../pages/ign/IgnLogPage'
 import IgnOpsPage from '../pages/ign/IgnOpsPage'
 import Todo from '../pages/workbench/Todo'
@@ -132,6 +134,8 @@ export default function AppRoutes() {
         <Route path="ign/executor" element={<IgnExecutorPage />} />
         <Route path="ign/tls" element={<IgnTlsPage />} />
         <Route path="ign/task" element={<IgnTaskPage />} />
+        <Route path="ign/template" element={<IgnParamTemplatePage />} />
+        <Route path="ign/config" element={<IgnClusterConfigPage />} />
         <Route path="ign/log" element={<IgnLogPage />} />
         <Route path="ign/ops" element={<IgnOpsPage />} />
         <Route path="workbench/todo" element={<Todo />} />

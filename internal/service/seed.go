@@ -177,6 +177,13 @@ var seedResources = []struct {
 	{"menu-ign-delivery", "执行机", "menu-ign-executor", "ign:FUNC-17", "MENU", "/ign/executor", "Cluster", 13},
 	{"menu-ign-delivery", "通道安全", "menu-ign-tls", "ign:FUNC-22", "MENU", "/ign/tls", "SafetyCertificate", 14},
 	{"menu-ign-delivery", "任务桥接", "menu-ign-task", "ign:FUNC-25", "MENU", "/ign/task", "Thunderbolt", 15},
+	// MU v1.3 menu-ign-template「参数面模板」：入口门禁取本屏主数据接口 FUNC-38（四岗位共有的列表查询发牌）。
+	// sort=15 与任务桥接同值，GetMenus 按 (sort_order,id) 升序天然落在任务桥接之后、日志与对账(16)之前，与 MU 菜单序一致。
+	{"menu-ign-delivery", "参数面模板", "menu-ign-template", "ign:FUNC-38", "MENU", "/ign/template", "Profile", 15},
+	// MU v1.3 menu-ign-config「集群交付配置」：入口门禁取本屏主数据接口 FUNC-46（与模板屏取 FUNC-38 同一口径：
+	// 列表/主数据查询的最小公共面，不取只覆盖单个页签的行为码）。sort=15 依 (sort_order,id) 升序落在
+	// 参数面模板之后、日志与对账(16)之前，与 MU 菜单序（…task → template → config → log）一致。
+	{"menu-ign-delivery", "集群交付配置", "menu-ign-config", "ign:FUNC-46", "MENU", "/ign/config", "Settings", 15},
 	// 入口门禁取页面主数据接口 FUNC-25（三页签四岗位共有的最小公共面），不取只覆盖单个页签的 FUNC-28。
 	{"menu-ign-delivery", "日志与对账", "menu-ign-log", "ign:FUNC-25", "MENU", "/ign/log", "FileText", 16},
 	// L1 运行观测(mu menu-l1-02)
@@ -512,6 +519,13 @@ func backfillIgnSeed() error {
 		"ign:FUNC-25", "menu-ign-log", "ign:FUNC-28"); err != nil {
 		return err
 	}
+	// v1.3 新屏菜单挂口（MU menu-ign-template「参数面模板」/ menu-ign-config「集群交付配置」）：
+	// 存量库只在 code 缺失时补插一条，已存在（含运维改过）不动。
+	for _, menuCode := range []string{"menu-ign-template", "menu-ign-config"} {
+		if err := backfillV13Menu(menuCode); err != nil {
+			return err
+		}
+	}
 	for _, c := range defaultIgnConfigs() {
 		if err := seedIgnConfigIfAbsent(store.DB, c.Key, c.Value, c.Desc, 1); err != nil {
 			return err
@@ -521,6 +535,28 @@ func backfillIgnSeed() error {
 		return err
 	}
 	return EnsureFacadeServiceUser()
+}
+
+// backfillV13Menu 按 seedResources 登记口径补插一条缺失菜单；父目录不在（被删/改名）时不强造树。
+func backfillV13Menu(code string) error {
+	exists, err := qOne(`SELECT id FROM sys_resource WHERE code = ?`, code)
+	if err != nil || exists != nil {
+		return err
+	}
+	for _, r := range seedResources {
+		if r.Code != code {
+			continue
+		}
+		parent, err := qOne(`SELECT id FROM sys_resource WHERE code = ?`, r.Parent)
+		if err != nil || parent == nil {
+			return err
+		}
+		_, err = qExec(`INSERT INTO sys_resource (parent_id, name, code, permission_code, type, path, component, icon, sort_order, status)
+			VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 1)`,
+			toInt(parent["id"]), r.Name, r.Code, r.PermCode, r.Type, r.Path, r.Icon, r.Sort)
+		return err
+	}
+	return nil
 }
 
 // EnsureFacadeServiceUser 交付门面服务账号（IGN-ROLE-05 非人工身份那一格；幂等）。

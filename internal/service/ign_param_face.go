@@ -261,6 +261,26 @@ func ignParamFaceKeysOfAxis(fileFace string) []ignParamField {
 	return out
 }
 
+// ParamFaceCatalog 面定义表的对外只读投影（GET /api/meta/ign-param-face）。
+// 界面下拉的合法域就是这张表本身（MU el09「刻意不建键字典、面定义改动不需重启界面」）：
+// 只出键、中文名、所属文件面、值形态、规则依据与落盘文件名，**不出任何取值、落盘键与校验器**
+// —— 值与凭据零出口（INV-08），前端若持有值即等于在本域四层之外自己算了一层取值。
+func ParamFaceCatalog() []map[string]any {
+	fields := ignParamFaceFields()
+	out := make([]map[string]any, 0, len(fields))
+	for _, f := range fields {
+		out = append(out, map[string]any{
+			"key":         f.Key,
+			"label":       f.Label,
+			"file_face":   f.FileFace,
+			"value_shape": f.Shape,
+			"ref_id":      f.RefID,
+			"axis_file":   f.AxisFile,
+		})
+	}
+	return out
+}
+
 // ignCfgFieldDefault 平台缺省面的登记值（取值源仍是 defaultIgnConfigs，面定义不复制第二份缺省清单）。
 func ignCfgFieldDefault(key string) string {
 	for _, c := range defaultIgnConfigs() {
@@ -654,6 +674,17 @@ func ignFaceGateUsable(view *paramFaceView) error {
 	return nil
 }
 
+// ignFaceEffectiveUsable 生效面能否被受理/预检放行的合一点：取值层门槛（R-13 增补口径 + R-19）
+// 加一次形态收口（ignValidateDeployParams）。受理侧（ignProfileForAction）与 dry-run（FUNC-48）
+// 都调它 —— 门槛与校验分两处、两侧各挑一半，就会出现"预检绿、受理走旧路径"的分歧（R-23）。
+// p 允许是生效面叠加待保存覆写候选后的面（FUNC-48 的 overrides），故与 view 分开传。
+func ignFaceEffectiveUsable(view *paramFaceView, p ignDeployParams) error {
+	if err := ignFaceGateUsable(view); err != nil {
+		return err
+	}
+	return ignValidateDeployParams(p)
+}
+
 // ignFaceTemplateItems 第 3 层的模板解析：返回模板行 + 字段值集 + 列级说明 + 治理拒绝结论。
 // 不可解析 / 非启用态 ⇒ refuse（受理即拒）；面不符 ⇒ 只回列级说明（一张模板只属一轴，另一轴本层不命中）。
 func ignFaceTemplateItems(db *gorm.DB, ref, fileFace string) (map[string]any, map[string]string, error, string) {
@@ -821,6 +852,25 @@ func ignInventoryState(clusterRef string) (string, string, error) {
 		return ignStateConflict, "清单在册但内容与本域派生指纹不符 ⇒ 接管后被改动，受理即刻拒绝（R-15）", nil
 	}
 	return ignStateManaged, "清单由本域派生在册 ⇒ 下次受理逐字段跟随事实改写（R-18 ②）", nil
+}
+
+// ignFaceRequestContext 本次递交的取值上下文：请求体携带的标识优先，为空即回落到该集群
+// 接管标记里的面标识快照（上游上一次递交的那张牌）。回落的是"快照"而不是"默认模板" ——
+// 后者会让未指定模板的存量集群下次装机参数静默漂移（R-20 分支 H）。
+// 受理侧（ignProfileForAction）与显示/预检侧（FUNC-46/48/50）都读这一处，两侧不得各写一套。
+func ignFaceRequestContext(clusterRef, paramTemplateRef, versionRef string) (string, string) {
+	paramTemplateRef = strings.TrimSpace(paramTemplateRef)
+	versionRef = strings.TrimSpace(versionRef)
+	if paramTemplateRef == "" || versionRef == "" {
+		mplRef, mVerRef := ignClusterFaceContext(clusterRef)
+		if paramTemplateRef == "" {
+			paramTemplateRef = mplRef
+		}
+		if versionRef == "" {
+			versionRef = mVerRef
+		}
+	}
+	return paramTemplateRef, versionRef
 }
 
 // ignClusterFaceContext 该集群当前的取值上下文（上游面标识声明与版本引用的本域留存事实）。

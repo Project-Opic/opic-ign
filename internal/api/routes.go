@@ -51,6 +51,9 @@ func SetupRoutes(r *gin.Engine) {
 		// FUNC-50 跨中心交付配置只读通道：调用方同为 ignition 服务令牌（集群中心代理读），
 		// 必须与门面三接口同组——挂进 authed 的 ign 组会让服务令牌解析不到（本文件顶部注释）。
 		facade.GET("/config/:clusterRef", perm("ign:FUNC-50", business.IgnFacadeDeliveryConfig)...)
+		// FUNC-50 原文形态（hosts / config.yml 逐字只读）：同一套掩码 + 逐次审计，来源标为上游代理读；
+		// 不新增权限码——身份与取值通道同一档（需求 FUNC-50「字段级视图 / 四层来源 / 覆写台账 / 原文」的原文腿）。
+		facade.GET("/config/:clusterRef/raw", perm("ign:FUNC-50", business.IgnFacadeDeliveryConfigRaw)...)
 	}
 
 	// ---- 登录路由组 ----
@@ -67,6 +70,8 @@ func SetupRoutes(r *gin.Engine) {
 		authed.POST("/assistant/query", business.AssistantQuery) // AI 只读 SQL 工具(白名单+审计)
 		authed.GET("/assistant/models", business.AssistantModels)
 		authed.GET("/meta/rules", meta.Rules)
+		// 参数面字段目录(登录即可;面定义的只读投影,界面下拉合法域的唯一来源)
+		authed.GET("/meta/ign-param-face", meta.ParamFace)
 
 		// 审批中心(登录即可;归属校验在服务层)
 		authed.GET("/workbench/todo", business.WorkbenchTodo)

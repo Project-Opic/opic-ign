@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"gitcode.com/opic-ontology/opic-techbase/internal/config"
+	"gitcode.com/opic-ontology/opic-techbase/internal/pkg/ontology"
 	"gitcode.com/opic-ontology/opic-techbase/internal/store"
 )
 
@@ -736,6 +738,95 @@ func TestFunc45RawViewMasksAndAudits(t *testing.T) {
 	}
 }
 
+// ---------- FUNC-50 原文腿（与 FUNC-45 同一份读盘 / 同一套掩码 / 逐次留痕，来源可区分） ----------
+
+func TestFunc50RawChannelParityAndAudit(t *testing.T) {
+	requireDB(t)
+	root := faceWorkRoot(t)
+	facadeUser := UserInfo{ID: 2, Username: "clc-service-proxy"}
+	ref := "kasz-ref-50raw"
+
+	// 磁盘无文件 ⇒ 明确「尚未生成」结论，不返回空文本报现状
+	if _, err := ReadIgnDeliveryConfigRaw(ref, "HOSTS", facadeUser); err == nil {
+		t.Fatalf("未生成过交付配置时应给状态类拒绝，而不是空原文")
+	} else {
+		wantErrContains(t, err, "尚未生成")
+	}
+	// file_face 必带、越界即拒（一次只出一面）
+	if _, err := ReadIgnDeliveryConfigRaw(ref, "", facadeUser); err == nil {
+		t.Fatalf("file_face 必带")
+	} else {
+		wantErrContains(t, err, "必须携带 file_face")
+	}
+	if _, err := ReadIgnDeliveryConfigRaw(ref, "HOSTS,CONFIG", facadeUser); err == nil {
+		t.Fatalf("越界文件面应被拒绝")
+	} else {
+		wantErrContains(t, err, "只能是 HOSTS")
+	}
+
+	dir := filepath.Join(root, "clusters", ref)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	text := "[kube_master]\n172.28.0.11\n[all:vars]\nETCDCTL_KEY_FILE=\"/etc/kubeasz/keys/admin-key.pem\"\nk8s_password: Sup3rS3cret!\n"
+	if err := os.WriteFile(filepath.Join(dir, "hosts"), []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manual, err := GetIgnClusterRawFile(ref, "HOSTS", faceTestUser)
+	mustNoErr(t, err)
+	// 小写入参由服务层归一——同一份文本、同一套掩码：逐字节一致
+	proxied, err := ReadIgnDeliveryConfigRaw(ref, "hosts", facadeUser)
+	mustNoErr(t, err)
+	if Str(proxied["content_sha256"]) != Str(manual["content_sha256"]) {
+		t.Fatalf("两条通道对同一份落盘文本必须给出同一摘要")
+	}
+	if !reflect.DeepEqual(manual["lines"], proxied["lines"]) {
+		t.Fatalf("代理通道读出的掩码文本必须与人工视图逐字节一致: %v vs %v", manual["lines"], proxied["lines"])
+	}
+	blob := fmt.Sprint(proxied["lines"])
+	if strings.Contains(blob, "Sup3rS3cret") {
+		t.Fatalf("凭据类值必须在流出前由本域整行掩码（对端不二次解析）")
+	}
+	if !strings.Contains(blob, ignMaskMark) || proxied["masked_line_count"].(int64) < 1 {
+		t.Fatalf("掩码标记与告警计数必须随原文回吐")
+	}
+	if _, ok := proxied["content"]; ok {
+		t.Fatalf("不得回吐未掩码的整份原文")
+	}
+	if !strings.Contains(Str(proxied["read_origin"]), "上游代理只读") {
+		t.Fatalf("代理通道回吐要带来源标识，实际 %q", Str(proxied["read_origin"]))
+	}
+
+	// 逐次留痕 + 来源可区分：每次调用审计 +1，人工/代理两条腿的标识互不冒领
+	beforeTask := countRows(t, `SELECT COUNT(*) FROM exec_task`)
+	beforeAll := countRows(t, `SELECT COUNT(*) FROM audit_logs WHERE action = 'IGN_RAW_FACE_READ'`)
+	beforeProxy := countRows(t, `SELECT COUNT(*) FROM audit_logs WHERE action = 'IGN_RAW_FACE_READ' AND detail LIKE '%上游代理只读(FUNC-50)%'`)
+	beforeLocal := countRows(t, `SELECT COUNT(*) FROM audit_logs WHERE action = 'IGN_RAW_FACE_READ' AND detail LIKE '%本域人工视图(FUNC-45)%'`)
+	if _, err := ReadIgnDeliveryConfigRaw(ref, "CONFIG", facadeUser); err == nil {
+		t.Fatalf("CONFIG 面未落盘，应给「尚未生成」")
+	}
+	if _, err := ReadIgnDeliveryConfigRaw(ref, "HOSTS", facadeUser); err != nil {
+		t.Fatalf("代理读失败: %v", err)
+	}
+	if _, err := GetIgnClusterRawFile(ref, "HOSTS", faceTestUser); err != nil {
+		t.Fatalf("人工视图读失败: %v", err)
+	}
+	if n := countRows(t, `SELECT COUNT(*) FROM audit_logs WHERE action = 'IGN_RAW_FACE_READ'`); n != beforeAll+2 {
+		t.Fatalf("两条腿都要逐次留痕（成功的读各一条），实际增量 %d", n-beforeAll)
+	}
+	if n := countRows(t, `SELECT COUNT(*) FROM audit_logs WHERE action = 'IGN_RAW_FACE_READ' AND detail LIKE '%上游代理只读(FUNC-50)%'`); n != beforeProxy+1 {
+		t.Fatalf("代理读的留痕要能标识来源，实际增量 %d", n-beforeProxy)
+	}
+	if n := countRows(t, `SELECT COUNT(*) FROM audit_logs WHERE action = 'IGN_RAW_FACE_READ' AND detail LIKE '%本域人工视图(FUNC-45)%'`); n != beforeLocal+1 {
+		t.Fatalf("人工视图的留痕要与代理读可区分，实际增量 %d", n-beforeLocal)
+	}
+	// 原文腿不写本域对象、不产生事件（与取值腿同一「只出不入」纪律）；上面 +2 计数即口径：被拒绝的读不留痕
+	if n := countRows(t, `SELECT COUNT(*) FROM exec_task`); n != beforeTask {
+		t.Fatalf("只读腿不得产生任务")
+	}
+}
+
 // ---------- FUNC-50 跨中心只读通道 ----------
 
 func TestFunc50ReadChannel(t *testing.T) {
@@ -805,6 +896,16 @@ func TestFunc50ReadChannel(t *testing.T) {
 		}
 		if hits == 0 {
 			t.Fatalf("layers 必须标注命中层")
+		}
+	}
+	// 跨中心通道的轴名标签必须随字段一并回吐：对端代理屏(clc frmClcWizard 配置页签)刻意不抄第二份轴表，
+	// 缺这一列它只能显示码值(HOSTS/CONFIG)——正是 DEF-05 判据要堵的口径。
+	if lbl := Str(out["file_face_label"]); lbl == "" || lbl == "HOSTS" {
+		t.Fatalf("通道头级须回吐取自模型字典的轴标签，实际 %q", lbl)
+	}
+	for _, f := range out["fields"].([]map[string]any) {
+		if lbl := Str(f["file_face_label"]); lbl == "" || lbl == Str(f["file_face"]) {
+			t.Fatalf("字段行缺轴标签或与码值同形: %v", f)
 		}
 	}
 	// 只出不入、无副作用；不下发模板内容与原文
@@ -963,6 +1064,112 @@ func TestFunc38ListProjection(t *testing.T) {
 	for _, r := range p.List {
 		if Str(r["template_no"]) == Str(a["template_no"]) && r["referenced_cluster_count"].(int) < 1 {
 			t.Fatalf("列表行应带被引用集群数（这张模板会被谁用，同屏可见）")
+		}
+	}
+}
+
+// TestParamFaceCatalogParityWithFaceDefinition DEF-05：界面下拉的合法域就是面定义表本身。
+// 判据两条：① 投影逐条对得上面定义（条数、键集、规则依据一一对应，不多不少不重复）；
+// ② 出口只有键的形态与归属（key/label/file_face/value_shape/ref_id/axis_file 六项），
+//
+//	落盘键、校验器与任何取值都不许出现（INV-08：界面拿到值即等于在本域四层之外自算一层）。
+func TestParamFaceCatalogParityWithFaceDefinition(t *testing.T) {
+	cat := ParamFaceCatalog()
+	fields := ignParamFaceFields()
+	if len(fields) == 0 {
+		t.Fatal("面定义表为空，目录无从对照")
+	}
+	if len(cat) != len(fields) {
+		t.Fatalf("目录条数须与面定义表一致，得到 %d / %d", len(cat), len(fields))
+	}
+	allowed := map[string]bool{"key": true, "label": true, "file_face": true,
+		"value_shape": true, "ref_id": true, "axis_file": true}
+	remaining := map[string]bool{}
+	for _, f := range fields {
+		remaining[f.Key] = true
+	}
+	refs := map[string]bool{}
+	for i, e := range cat {
+		key := Str(e["key"])
+		if !remaining[key] {
+			t.Fatalf("目录第 %d 条的键 %q 不在面定义表内", i+1, key)
+		}
+		delete(remaining, key)
+		ref := Str(e["ref_id"])
+		if refs[ref] {
+			t.Fatalf("规则依据 %s 在目录里重复出现", ref)
+		}
+		refs[ref] = true
+		for k := range e {
+			if !allowed[k] {
+				t.Fatalf("目录条目多出投影外字段 %s（面定义对外只出形态与归属）", k)
+			}
+		}
+		if f := Str(e["file_face"]); f != ignFaceHosts && f != ignFaceConfig {
+			t.Fatalf("键 %s 的所属文件面 %q 不是两轴之一", key, f)
+		}
+		if s := Str(e["value_shape"]); s != ignShapeScalar && s != ignShapeList {
+			t.Fatalf("键 %s 的值形态 %q 不是两值之一", key, s)
+		}
+		if Str(e["label"]) == "" || Str(e["axis_file"]) == "" {
+			t.Fatalf("键 %s 的中文名或落盘文件名为空", key)
+		}
+	}
+	if len(remaining) > 0 {
+		t.Fatalf("面定义有键未进目录：%v", remaining)
+	}
+	if len(refs) != len(fields) {
+		t.Fatalf("规则依据须逐键一对一，得到 %d 条覆盖 %d 个键", len(refs), len(fields))
+	}
+	// 字典轴（IGN_CONFIG_FILE_FACE / IGN_VALUE_SHAPE）与面定义用的是同一套码值：
+	// 界面走元数据档通道取轴与形态的中文名，键域仍来自本目录，两路不得给出互斥的取值。
+	for _, e := range cat {
+		if Str(e["file_face"]) == ignFaceHosts && Str(e["axis_file"]) != "hosts" {
+			t.Fatalf("主机清单面的落盘文件名应为 hosts，得到 %q", Str(e["axis_file"]))
+		}
+		if Str(e["file_face"]) == ignFaceConfig && Str(e["axis_file"]) != "config.yml" {
+			t.Fatalf("集群配置面的落盘文件名应为 config.yml，得到 %q", Str(e["axis_file"]))
+		}
+	}
+}
+
+// TestDictLabelComesFromModelNotFromLocalCopy —— 中文标签的唯一事实源是 M1 字典（DEF-05 的读侧对偶）。
+//
+// 判据：跨中心代理屏（frmClcWizard 的配置页签）与对端自己的两屏用的是同一份标签，
+// 因此标签必须由服务层随视图一起给出；一旦有实现把轴中文写回代码里当副本，
+// 这里"标签 != code"与"目录里每个轴都能解析"两条会同时失败。
+func TestDictLabelComesFromModelNotFromLocalCopy(t *testing.T) {
+	reg := ontology.Load()
+	for _, typeCode := range []string{"IGN_CONFIG_FILE_FACE", "IGN_VALUE_SHAPE"} {
+		items := reg.GetDictionaryItems("DICT-"+typeCode, typeCode)
+		if len(items) == 0 {
+			t.Fatalf("字典 %s 未注册（模型 m1 data_dictionaries 是唯一标签源，取不到即视图无中文可回吐）", typeCode)
+		}
+		for _, it := range items {
+			code, label := Str(it["code"]), Str(it["label"])
+			if code == "" || strings.TrimSpace(label) == "" {
+				t.Fatalf("%s 的字典项缺 code 或 label：code=%q label=%q", typeCode, code, label)
+			}
+			if got := ignDictLabel(typeCode, code); got != strings.TrimSpace(label) {
+				t.Fatalf("%s/%s 的标签应与模型一致：model=%q helper=%q", typeCode, code, label, got)
+			}
+			if got := ignDictLabel(typeCode, code); got == code {
+				t.Fatalf("%s/%s 的中文标签回吐成了 code，模型标签没生效：%q", typeCode, code, got)
+			}
+		}
+	}
+	// 未命中不编造中文（宁可显式英文码，也不在进程里留一份会漂的副本）
+	if got := ignDictLabel("IGN_CONFIG_FILE_FACE", "NOT_A_FACE"); got != "NOT_A_FACE" {
+		t.Fatalf("未命中字典项应原样回吐 code，得到 %q", got)
+	}
+	if got := ignDictLabel("IGN_CONFIG_FILE_FACE", "  "); got != "" {
+		t.Fatalf("空 code 应回空串，得到 %q", got)
+	}
+	// 面目录里出现的每个轴码都必须能被字典解析成中文（两轴之外不得有第三种取值）
+	for _, e := range ParamFaceCatalog() {
+		face := Str(e["file_face"])
+		if got := ignDictLabel("IGN_CONFIG_FILE_FACE", face); got == "" || got == face {
+			t.Fatalf("面目录的轴 %q 在字典里取不到中文标签（回吐 %q）", face, got)
 		}
 	}
 }

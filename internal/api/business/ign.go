@@ -37,7 +37,13 @@ func IgnDictionaries(c *gin.Context) {
 		// v1.1：安装步骤参数域（INV-36）与结论依据（INV-37）——界面下拉/展示的唯一取值域来源
 		"IGN_INSTALL_STEP":   common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_INSTALL_STEP", "IGN_INSTALL_STEP")),
 		"IGN_VERDICT_SOURCE": common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_VERDICT_SOURCE", "IGN_VERDICT_SOURCE")),
-		"checkpoint_note":    metaIgnCheckpointNote(),
+		// v1.3：参数面模板与集群覆写族的四个枚举 + 值形态（界面下拉合法域的唯一来源，前端不得再抄一份）
+		"IGN_CONFIG_FILE_FACE":     common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_CONFIG_FILE_FACE", "IGN_CONFIG_FILE_FACE")),
+		"IGN_VALUE_SHAPE":          common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_VALUE_SHAPE", "IGN_VALUE_SHAPE")),
+		"IGN_PARAM_TEMPLATE_STATE": common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_PARAM_TEMPLATE_STATE", "IGN_PARAM_TEMPLATE_STATE")),
+		"IGN_PARAM_SOURCE":         common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_PARAM_SOURCE", "IGN_PARAM_SOURCE")),
+		"IGN_OVERRIDE_STATE":       common.OrEmpty(reg.GetDictionaryItems("DICT-IGN_OVERRIDE_STATE", "IGN_OVERRIDE_STATE")),
+		"checkpoint_note":          metaIgnCheckpointNote(),
 	}))
 }
 

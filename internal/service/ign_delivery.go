@@ -80,6 +80,9 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 	actionCode := strings.TrimSpace(Str(data["action_code"]))
 	stepCode := strings.TrimSpace(Str(data["step_code"]))
 	versionRef := strings.TrimSpace(Str(data["version_ref"]))
+	// 参数面模板标识（R-13 本批增补口径 + R-20）：递交的是"用哪张"这一登记标识，不是模板内容；
+	// 为空即由 ignFaceRequestContext 回落到该集群接管标记里快照的那张牌（不回落到默认模板）
+	paramTemplateRef := strings.TrimSpace(Str(data["param_template_ref"]))
 
 	// ① 请求形态校验（INV-34：门面路径必带来源两列；序号 ≥1）
 	if sourceTaskNo == "" || len(sourceTaskNo) > 64 {
@@ -130,9 +133,10 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 		return nil, Fail(errcode.ErrState, "%s（R-15：本机执行位不可用即受理即刻拒绝，不转入其他执行位）", why)
 	}
 
-	// ⑤ B-AUTO-15 交付配置前置（对齐三态见 R-18）：安装族按登记事实落定 clusters/<ref>/{hosts,config.yml}，
-	// 节点增删只核对在册事实（不写 hosts —— 新地址由命令面自己 sed 进工作组）
-	alignNote, err := ignAlignPrecondition(clusterRef, action, resolvedStep, versionRef, nodes)
+	// ⑤ B-AUTO-15 交付配置前置（对齐三态见 R-18，取值四层见 R-20）：安装族按登记事实 + 四层生效面
+	// 落定 clusters/<ref>/{hosts,config.yml}，节点增删只核对在册事实（不写 hosts —— 新地址由命令面
+	// 自己 sed 进工作组）。拓扑面与参数面不同轴：节点清单只决定成员，参数面取值只决定受管键的值。
+	alignNote, faceApplied, err := ignAlignPrecondition(clusterRef, action, resolvedStep, paramTemplateRef, versionRef, nodes)
 	if err != nil {
 		kind := "B-AUTO-15 交付配置未对齐（R-15 受理即刻拒绝）"
 		if AsBizErr(err).Code == errcode.ErrForbidden {
@@ -162,6 +166,7 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 
 	var result map[string]any
 	var reused bool
+	var traceSkipped int
 	err = tx(func(db *gorm.DB) error {
 		// INV-35：命中「来源任务标识 + 来源步骤序号」的非终态任务 ⇒ 复用原任务、不新建
 		open, err := store.One(db, `
@@ -175,7 +180,9 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 		if open != nil {
 			result = open
 			reused = true
-			return nil
+			// INV-42：本次对齐若真刷新了交付配置，命中覆写层的行按复用的那个任务号成对回填
+			traceSkipped, err = ignMarkOverridesApplied(db, faceApplied, Str(open["task_no"]))
+			return err
 		}
 		// R-05：容量原子校验（超上限影响 0 行 = 容量拒绝；R-17 排队不占额外容量）
 		res, err := store.Exec(db, `
@@ -210,10 +217,17 @@ func DeliverySubmit(data map[string]any, user UserInfo) (map[string]any, error) 
 			return err
 		}
 		result = row
-		return nil
+		// INV-42 / R-21：交付配置已按四层取值落盘 ⇒ 本次实际命中并生效的覆写行按当次任务号
+		// 成对回填追溯对（与任务行同事务提交，不留"文件已改而台账说没生效"的中间态）
+		traceSkipped, err = ignMarkOverridesApplied(db, faceApplied, taskNo)
+		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	if traceSkipped > 0 { // 行在受理窗口内被回落或删除：不静默吞掉，任务台账里可读回
+		ignAppendTaskLog(toInt(result["id"]), "PLATFORM", fmt.Sprintf(
+			"覆写追溯对回填跳过 %d 条（该坐标的覆写行在受理窗口内已被回落或删除，R-21/INV-42）", traceSkipped))
 	}
 	if reused {
 		result["facade_reused"] = true
@@ -258,39 +272,49 @@ func ignFacadeArgs(action string, nodes []ignNodeSpec) (string, error) {
 }
 
 // ignAlignPrecondition 受理侧的交付配置前置（B-AUTO-15 的落点）。
-// 安装族：按请求体节点清单 + 缺省参数面（REF-17~25）+ 交付版本派生渲染 clusters/<ref>；
+// 安装族：按请求体节点清单（拓扑面，Q-72）+ 四层取值的生效面（参数面：集群覆写 / 交付版本派生 /
+// 参数面模板 / 平台缺省面，R-20）渲染 clusters/<ref>；两条轴不同轴，参数面取值不影响节点成员。
 // 节点增删：只核对在册事实；其余动作（start/stop/backup/destroy/cmd 族）不需要本域写配置
 // —— 它们的 inventory 由安装族产出，缺失时由命令面自己报错（不代答、不预判）。
-func ignAlignPrecondition(clusterRef, action, stepCode, versionRef string, nodes []ignNodeSpec) (string, error) {
+// 第二个返回值是覆写层的消费事实（INV-42 追溯对回填判据），非安装族或对齐失败时为 nil。
+func ignAlignPrecondition(clusterRef, action, stepCode, paramTemplateRef, versionRef string,
+	nodes []ignNodeSpec) (string, *ignFaceApplied, error) {
 	switch {
 	case ignInstallFamily(action):
 		topo := ignTopology{}
 		if len(nodes) > 0 {
 			t, err := ignBuildTopology(nodes)
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
 			topo = t
 		}
-		params, err := ignProfileForAction(versionRef)
+		view, err := ignProfileForAction(clusterRef, paramTemplateRef, versionRef)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		return ignAlignClusterInventory(ignAlignReq{
-			ClusterRef: clusterRef, Action: action, StepCode: stepCode, Topo: topo, Params: params,
+		applied, note, err := ignAlignClusterInventoryOutcome(ignAlignReq{
+			ClusterRef: clusterRef, Action: action, StepCode: stepCode, Topo: topo, Params: view.Params,
+			ParamTemplateRef: view.ParamTemplateRef, VersionRef: view.VersionRef,
 		})
+		if err != nil {
+			return "", nil, err
+		}
+		applied.Face = view
+		return note, &applied, nil
 	case ignNodesAction(action):
 		// 命令面对节点增删做 IPv4 硬校验（ezctl 的 add-node/del-node 用 IPv4 正则）：
 		// 主机名地址在受理侧就拒掉，不留"任务已登记、执行位才失败"的半途事实
 		for _, ip := range ignAddrList(nodes) {
 			if !ignIsIPv4(ip) {
-				return "", Fail(errcode.ErrForbidden,
+				return "", nil, Fail(errcode.ErrForbidden,
 					"节点增删类动作的地址 %q 不是 IPv4（命令面硬校验；R-13 受理侧拒绝）", ip)
 			}
 		}
-		return ignAlignNodeOps(clusterRef, action, ignAddrList(nodes))
+		note, err := ignAlignNodeOps(clusterRef, action, ignAddrList(nodes))
+		return note, nil, err
 	}
-	return "", nil
+	return "", nil, nil
 }
 
 // DeliveryReceipt FUNC-35 交付门面 · 回执与增量日志（只读；反复轮询无副作用）。

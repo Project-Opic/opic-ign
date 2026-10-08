@@ -187,3 +187,15 @@ func IgnFacadeDeliveryConfig(c *gin.Context) {
 	}
 	c.JSON(200, out)
 }
+
+// IgnFacadeDeliveryConfigRaw GET /api/v1/ign/delivery/config/:clusterRef/raw?file_face= (FUNC-50 原文形态)。
+// 与 FUNC-45 人工视图同一份读盘 / 同一套掩码 / 同一逐次审计（服务层共用内核），审计与回吐带来源标注；
+// 不新增权限码——身份仍是下游中心服务身份，与 FUNC-34/35/50 同一档。flat JSON 回吐，失败走 facadeFail。
+func IgnFacadeDeliveryConfigRaw(c *gin.Context) {
+	out, err := service.ReadIgnDeliveryConfigRaw(c.Param("clusterRef"), c.Query("file_face"), common.UserOf(c))
+	if err != nil {
+		facadeFail(c, err)
+		return
+	}
+	c.JSON(200, out)
+}

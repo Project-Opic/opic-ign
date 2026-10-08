@@ -167,3 +167,28 @@ export function TaskStatusPill({ status }: { status: string }) {
   if (!meta) return <StatusPill tone="muted" label={status} />
   return <StatusPill tone={meta.tone} label={meta.label} />
 }
+
+/** IGN 参数面模板状态 → 胶囊 DICT-IGN_PARAM_TEMPLATE_STATE(草稿=muted/启用=success/停用=muted 可往复;软删是标记不占状态位) */
+export const IGN_PARAM_TEMPLATE_STATE_TONE: Record<string, { tone: StatusTone; label: string }> = {
+  DRAFT: { tone: 'muted', label: '草稿' },
+  ENABLED: { tone: 'success', label: '启用' },
+  DISABLED: { tone: 'muted', label: '停用' },
+}
+
+export function IgnTemplateStatePill({ status }: { status: string }) {
+  const meta = IGN_PARAM_TEMPLATE_STATE_TONE[status]
+  if (!meta) return <StatusPill tone="muted" label={status} />
+  return <StatusPill tone={meta.tone} label={meta.label} />
+}
+
+/** IGN 覆写状态 → 胶囊 DICT-IGN_OVERRIDE_STATE(生效=success/已回落=muted;两态可往复,回落不是删除也不是失败) */
+export const IGN_OVERRIDE_STATE_TONE: Record<string, { tone: StatusTone; label: string }> = {
+  EFFECTIVE: { tone: 'success', label: '生效' },
+  ROLLED_BACK: { tone: 'muted', label: '已回落' },
+}
+
+export function IgnOverrideStatePill({ status }: { status: string }) {
+  const meta = IGN_OVERRIDE_STATE_TONE[status]
+  if (!meta) return <StatusPill tone="muted" label={status} />
+  return <StatusPill tone={meta.tone} label={meta.label} />
+}

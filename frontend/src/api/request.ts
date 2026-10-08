@@ -84,7 +84,8 @@ export const http = {
   put<T = any>(path: string, data?: unknown): Promise<T> {
     return instance.put(path, data ?? {}) as unknown as Promise<T>
   },
-  del<T = any>(path: string): Promise<T> {
-    return instance.delete(path) as unknown as Promise<T>
+  del<T = any>(path: string, data?: unknown): Promise<T> {
+    // 部分 DELETE 走统一信封带 body(如 FUNC-44 模板软删必携带事由);无 body 的旧调用不受影响
+    return instance.delete(path, { data: data ?? {} }) as unknown as Promise<T>
   },
 }

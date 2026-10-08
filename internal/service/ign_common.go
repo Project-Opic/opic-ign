@@ -88,6 +88,24 @@ func ignDictCodes(typeCode string) map[string]bool {
 	return out
 }
 
+// ignDictLabel 取字典启用项的中文标签（M1 字典是唯一权威，界面一律回显后端标签、不回译 code）。
+// 注册表未加载或该项无标签时原样回吐 code —— 宁可显示英文码，也不在进程里猜一份中文副本。
+func ignDictLabel(typeCode, code string) string {
+	if strings.TrimSpace(code) == "" {
+		return ""
+	}
+	reg := ontology.Load()
+	for _, it := range reg.GetDictionaryItems("DICT-"+typeCode, typeCode) {
+		if Str(it["code"]) == code {
+			if lb := strings.TrimSpace(Str(it["label"])); lb != "" {
+				return lb
+			}
+			break
+		}
+	}
+	return code
+}
+
 // ignDictRequire 校验取值命中字典,未命中给中文提示。
 func ignDictRequire(typeCode, value, label string) error {
 	if strings.TrimSpace(value) == "" {

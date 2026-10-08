@@ -69,10 +69,18 @@ func ignTraceSourceRef(tr paramFieldTrace) string {
 	return tr.PlatformDefault.SourceRef
 }
 
-// GetIgnClusterRawFile FUNC-45 清单原文只读视图：带行号整份文本、可复制、无编辑态、
-// 无下载导出；渲染前过 R-16 同一套凭据形态识别，命中即整行掩码并回吐告警计数；
-// 每次读取写一条审计（本域唯一「读也留痕」的视图，R-26）。
-func GetIgnClusterRawFile(clusterRef, fileFace string, user UserInfo) (map[string]any, error) {
+// 原文流出来源标识（审计与回吐里区分「人工在本域看」还是「上游代理读」；
+// 两者共用同一份读盘 + 同一套掩码 + 同一逐次留痕，只有口径标注不同——FUNC-45/FUNC-50 同源）。
+const (
+	ignRawOriginLocal  = "本域人工视图(FUNC-45)"
+	ignRawOriginFacade = "上游代理只读(FUNC-50)"
+)
+
+// ignRawFaceReadout 原文只读视图的共同内核（FUNC-45 人工视图与 FUNC-50 代理通道共用）：
+// 同一份落盘文本读取 + 同一套 R-16 凭据掩码（整行掩码，片段掩码仍可拼回）+ 逐次审计。
+// origin 只影响留痕标注与回吐 notice，不影响文本口径——两条通道读出的行必须逐字节一致，
+// 各写一份读盘/掩码逻辑就必然漂移。文件缺失回 ErrState「尚未生成」结论，不以空文本报现状。
+func ignRawFaceReadout(clusterRef, fileFace string, user UserInfo, origin, notice string) (map[string]any, error) {
 	if err := ignCheckClusterRefForFace(clusterRef); err != nil {
 		return nil, err
 	}
@@ -99,17 +107,40 @@ func GetIgnClusterRawFile(clusterRef, fileFace string, user UserInfo) (map[strin
 		lines = append(lines, map[string]any{"no": i + 1, "text": masked})
 	}
 	WriteAudit(nil, user.ID, user.Username, "IGN_RAW_FACE_READ", fmt.Sprintf(
-		"清单原文只读视图：%s / %s（%d 行，凭据掩码命中 %d 行）", clusterRef, fileFace, len(lines), maskedCount))
+		"清单原文只读视图：%s / %s（%d 行，凭据掩码命中 %d 行）来源=%s", clusterRef, fileFace, len(lines), maskedCount, origin))
 	return map[string]any{
 		"cluster_ref":       clusterRef,
 		"file_face":         fileFace,
+		"file_face_label":   ignDictLabel("IGN_CONFIG_FILE_FACE", fileFace),
 		"file_name":         name,
 		"line_count":        len(lines),
 		"masked_line_count": maskedCount,
-		"content_sha256":    ignSHA256(text),
+		"content_sha256":    ignSHA256(text), // 摘要取掩码前原文——两条通道对同一份落盘文本必须给出同一摘要
 		"lines":             lines,
-		"notice":            "只读视图：不提供编辑态、不提供下载导出（R-26）；写入口是「集群交付配置」屏的字段级覆写（FUNC-47，另一张牌）；命中 R-16 凭据形态的行已整行掩码",
+		"read_origin":       origin,
+		"notice":            notice,
 	}, nil
+}
+
+// GetIgnClusterRawFile FUNC-45 清单原文只读视图：带行号整份文本、可复制、无编辑态、
+// 无下载导出；渲染前过 R-16 同一套凭据形态识别，命中即整行掩码并回吐告警计数；
+// 每次读取写一条审计（本域唯一「读也留痕」的视图，R-26）。
+func GetIgnClusterRawFile(clusterRef, fileFace string, user UserInfo) (map[string]any, error) {
+	return ignRawFaceReadout(clusterRef, fileFace, user, ignRawOriginLocal,
+		"只读视图：不提供编辑态、不提供下载导出（R-26）；写入口是「集群交付配置」屏的字段级覆写（FUNC-47，另一张牌）；命中 R-16 凭据形态的行已整行掩码")
+}
+
+// ReadIgnDeliveryConfigRaw FUNC-50 跨中心原文只读通道（挂在门面组，服务身份调用）：
+// 与 FUNC-45 同一份读盘、同一套掩码、同一逐次审计，只多出来源标注；
+// file_face 必带且只出一面（越界/缺参给中文提示）；磁盘无文件时回「尚未生成」ErrState 结论。
+func ReadIgnDeliveryConfigRaw(clusterRef, fileFace string, user UserInfo) (map[string]any, error) {
+	fileFace = strings.ToUpper(strings.TrimSpace(fileFace))
+	if fileFace == "" {
+		return nil, Fail(errcode.ErrParam,
+			"必须携带 file_face 且只出一面：只能是 HOSTS（主机清单原文）或 CONFIG（config.yml 原文）——一次只取一面，缺参即拒（FUNC-50 原文通道口径）")
+	}
+	return ignRawFaceReadout(clusterRef, fileFace, user, ignRawOriginFacade,
+		"跨中心原文只读通道：不提供编辑态；凭据形态的行已在流出前由本域整行掩码（对端不二次解析）；来源已逐次落审计（区分本域人工视图与上游代理读）")
 }
 
 // GetIgnClusterConfigView FUNC-46 集群交付配置查看：必须选定集群 + 文件面（一次只看一轴）；
@@ -125,15 +156,12 @@ func GetIgnClusterConfigView(clusterRef, fileFace string, refs map[string]any, u
 	if err := ignCheckTemplateFace(fileFace); err != nil {
 		return nil, err
 	}
-	tplRef, verRef := ignClusterFaceContext(clusterRef)
+	reqTpl, reqVer := "", ""
 	if refs != nil {
-		if v := strings.TrimSpace(Str(refs["param_template_ref"])); v != "" {
-			tplRef = v
-		}
-		if v := strings.TrimSpace(Str(refs["version_ref"])); v != "" {
-			verRef = v
-		}
+		reqTpl = strings.TrimSpace(Str(refs["param_template_ref"]))
+		reqVer = strings.TrimSpace(Str(refs["version_ref"]))
 	}
+	tplRef, verRef := ignFaceRequestContext(clusterRef, reqTpl, reqVer)
 	view, err := resolveParamFace(store.DB, clusterRef, fileFace, tplRef, verRef)
 	if err != nil {
 		return nil, err
@@ -151,6 +179,7 @@ func GetIgnClusterConfigView(clusterRef, fileFace string, refs map[string]any, u
 			"ref_id":                 tr.RefID,
 			"label":                  tr.Label,
 			"file_face":              tr.FileFace,
+			"file_face_label":        ignDictLabel("IGN_CONFIG_FILE_FACE", tr.FileFace), // 跨中心代理屏(frmClcWizard 配置页签)据此出中文,不再抄第三份轴表
 			"value_shape":            tr.ValueShape,
 			"platform_default":       tr.PlatformDefault,
 			"param_template":         tr.TemplateValue,
@@ -171,6 +200,7 @@ func GetIgnClusterConfigView(clusterRef, fileFace string, refs map[string]any, u
 	out := map[string]any{
 		"cluster_ref":                  clusterRef,
 		"file_face":                    fileFace,
+		"file_face_label":              ignDictLabel("IGN_CONFIG_FILE_FACE", fileFace),
 		"requested_param_template_ref": tplRef,
 		"hit_param_template_ref":       view.ParamTemplateRef,
 		"param_template_notice":        view.TemplateNotice,
@@ -303,10 +333,11 @@ func SaveIgnClusterConfigOverride(data map[string]any, user UserInfo) (map[strin
 }
 
 // ValidateIgnClusterConfig FUNC-48 校验（dry-run 预检）：判定次序固定 请求形态（R-13）→
-// 版本可用（R-19）→ 参数面形态 → 三态归属（R-18）；复用受理侧同一套校验器
-// （ignFaceGateUsable / ignValidateDeployParams / ignInventoryState），五不：
-// 不写盘 / 不建任务 / 不占并发额度 / 不改覆写行 / 不进受理台账（R-23，流程侧 PROC-07 M 分支）。
-// 结论与真实受理一致——预检与受理各写一套逻辑必然漂移，漂移后的预检就是误导源。
+// 版本可用（R-19）→ 参数面形态 → 三态归属（R-18）；取值上下文与受理侧同样回落到接管标记快照，
+// 放行判定直接调受理侧那个 ignFaceEffectiveUsable（门槛 + 形态收口一处实现），三态调
+// ignInventoryState，五不：不写盘 / 不建任务 / 不占并发额度 / 不改覆写行 / 不进受理台账
+// （R-23，流程侧 PROC-07 M 分支）。结论与真实受理一致——预检与受理各写一套逻辑必然漂移，
+// 漂移后的预检就是误导源。
 func ValidateIgnClusterConfig(data map[string]any, user UserInfo) (map[string]any, error) {
 	clusterRef := strings.TrimSpace(Str(data["cluster_ref"]))
 	fileFace := strings.ToUpper(strings.TrimSpace(Str(data["file_face"])))
@@ -328,24 +359,15 @@ func ValidateIgnClusterConfig(data map[string]any, user UserInfo) (map[string]an
 		out["fields"] = []map[string]any{}
 		return out, nil
 	}
-	tplRef, verRef := ignClusterFaceContext(clusterRef)
-	if v := strings.TrimSpace(Str(data["param_template_ref"])); v != "" {
-		tplRef = v
-	}
-	if v := strings.TrimSpace(Str(data["version_ref"])); v != "" {
-		verRef = v
-	}
+	tplRef, verRef := ignFaceRequestContext(clusterRef,
+		strings.TrimSpace(Str(data["param_template_ref"])), strings.TrimSpace(Str(data["version_ref"])))
 	view, err := resolveParamFace(store.DB, clusterRef, "", tplRef, verRef)
 	if err != nil {
 		return nil, err
 	}
-	// ② 取值层门槛（R-13 增补口径 + R-19）：与受理侧共用 ignFaceGateUsable——携带了引用却不是
-	// 一条可用事实即治理拒绝，绝不静默用下层取值继续装机
-	if err := ignFaceGateUsable(view); err != nil {
-		refuse(err)
-	}
-	// ③ 参数面形态：受理侧 ignProfileForAction 的收口校验器（ignValidateDeployParams）跑在
-	// 四层取值的生效面上；待保存的覆写候选（overrides）逐键过面定义校验器（与 FUNC-47 同一实现）
+	// ③ 参数面形态：待保存的覆写候选（overrides）逐键过面定义校验器（与 FUNC-47 同一实现），
+	// 命中即合进生效面副本；收口校验与受理侧共用 ignFaceEffectiveUsable（门槛 + 形态各一处实现），
+	// 于是"预检说会生效"与"受理真落盘"对同一输入必然同一结论（R-23）
 	p := view.Params
 	var pending []map[string]any
 	if items, ok := data["overrides"].([]any); ok {
@@ -376,7 +398,7 @@ func ValidateIgnClusterConfig(data map[string]any, user UserInfo) (map[string]an
 			pending = append(pending, map[string]any{"field_key": key, "value": value})
 		}
 	}
-	if err := ignValidateDeployParams(p); err != nil {
+	if err := ignFaceEffectiveUsable(view, p); err != nil {
 		refuse(err)
 	}
 	// ④ 三态归属（R-18）：与受理侧同一判定；CONFLICT ⇒ 带清单的重写受理即刻拒绝（结论回吐，不另猜）
@@ -470,6 +492,42 @@ func RollbackIgnClusterConfigOverride(data map[string]any, user UserInfo) (map[s
 	return out, nil
 }
 
+// ignMarkOverridesApplied INV-42 / R-21 的落点：B-AUTO-15 真产出或刷新交付配置后，把本次
+// **实际命中并生效**的覆写行追溯对成对回填为当次任务标识。判据只有一条 —— 生效来源是覆写层
+// （view.OverrideKeys）：值为空的行根本不参与取值、已回落行被求值器排除、被更高优先层压过的行
+// 生效来源不是覆写层，都不回填（留着旧追溯对就分不清「曾经生效」与「现在正生效」）。
+// 与 FUNC-49 回落、FUNC-47 再覆写的清空动作合起来，构成 applied_task_no / applied_at 的成对语义。
+// 返回未能回填的坐标数（行在受理窗口内被回落或删除）：调用方据此留痕，不静默吞掉。
+func ignMarkOverridesApplied(db *gorm.DB, applied *ignFaceApplied, taskNo string) (int, error) {
+	if applied == nil || !applied.Wrote || applied.Face == nil {
+		return 0, nil
+	}
+	taskNo = strings.TrimSpace(taskNo)
+	if taskNo == "" || len(applied.Face.OverrideKeys) == 0 {
+		return 0, nil
+	}
+	now := ignNow()
+	var missing int
+	for _, coord := range applied.Face.OverrideKeys {
+		fileFace, fieldKey, ok := strings.Cut(coord, "|")
+		if !ok || fileFace == "" || fieldKey == "" {
+			continue
+		}
+		n, err := store.Exec(db, `UPDATE ign_cluster_config_override
+			SET applied_task_no = ?, applied_at = ?, updated_at = ?
+			WHERE flag = 1 AND cluster_ref = ? AND file_face = ? AND field_key = ?
+			  AND override_status = 'EFFECTIVE'`,
+			taskNo, now, now, applied.ClusterRef, fileFace, fieldKey)
+		if err != nil {
+			return missing, err
+		}
+		if n == 0 {
+			missing++
+		}
+	}
+	return missing, nil
+}
+
 // ReadIgnDeliveryConfig FUNC-50 跨中心交付配置只读通道（挂在门面组，服务身份调用）：
 // 上游经本通道读四层取值结果，只出不入、无副作用——不产生任务、不改覆写行、
 // 不下发模板内容、不下发原文文本（原文走本域 FUNC-45 的独立权限码）。
@@ -485,13 +543,7 @@ func ReadIgnDeliveryConfig(clusterRef, fileFace, paramTemplateRef, versionRef st
 			return nil, err
 		}
 	}
-	mplRef, mVerRef := ignClusterFaceContext(clusterRef)
-	if strings.TrimSpace(paramTemplateRef) == "" {
-		paramTemplateRef = mplRef
-	}
-	if strings.TrimSpace(versionRef) == "" {
-		versionRef = mVerRef
-	}
+	paramTemplateRef, versionRef = ignFaceRequestContext(clusterRef, paramTemplateRef, versionRef)
 	view, err := resolveParamFace(store.DB, clusterRef, fileFace, paramTemplateRef, versionRef)
 	if err != nil {
 		return nil, err
@@ -500,10 +552,13 @@ func ReadIgnDeliveryConfig(clusterRef, fileFace, paramTemplateRef, versionRef st
 	for _, tr := range view.Traces {
 		applied := ignCellAppliedDisplay(tr.OverrideValue)
 		fields = append(fields, map[string]any{
-			"field_key":       tr.FieldKey,
-			"ref_id":          tr.RefID,
-			"label":           tr.Label,
-			"file_face":       tr.FileFace,
+			"field_key": tr.FieldKey,
+			"ref_id":    tr.RefID,
+			"label":     tr.Label,
+			"file_face": tr.FileFace,
+			// 跨中心代理屏(frmClcWizard 配置页签及其复用视图)的轴名一律取本字段,下游不抄第二份轴表。
+			// FUNC-46 本域视图早已有之;本通道(FUNC-50)曾漏 ⇒ 对端只能回吐码值,补齐两条通道同口径。
+			"file_face_label": ignDictLabel("IGN_CONFIG_FILE_FACE", tr.FileFace),
 			"value_shape":     tr.ValueShape,
 			"value":           tr.EffectiveValue, // 生效值 = 下次受理将生效值（R-21）
 			"hit_layer":       tr.EffectiveSource,
@@ -519,12 +574,13 @@ func ReadIgnDeliveryConfig(clusterRef, fileFace, paramTemplateRef, versionRef st
 	out := map[string]any{
 		"cluster_ref":           clusterRef,
 		"file_face":             fileFace,
+		"file_face_label":       ignDictLabel("IGN_CONFIG_FILE_FACE", fileFace),
 		"param_template_ref":    paramTemplateRef,
 		"param_template_notice": view.TemplateNotice,
 		"version_ref":           versionRef,
 		"version_notice":        view.VersionNotice,
 		"fields":                fields,
-		"notice":                "只读通道：反复调用无副作用；不含模板内容与清单原文（R-26）；写入口仅在本域「集群交付配置」屏",
+		"notice":                "只读通道：反复调用无副作用；本路径只回取值结论、不含模板内容（R-26）；原文形态走同组 /config/:clusterRef/raw（必带 file_face，同一套掩码与逐次留痕）；写入口仅在本域「集群交付配置」屏",
 	}
 	if view.versionErr != nil {
 		out["version_governance_refuse"] = AsBizErr(view.versionErr).Msg

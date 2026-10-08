@@ -278,11 +278,220 @@ export interface IgnParam {
   updated_at: string | null
 }
 
+/* ---------- AGG-IGN-07 参数面模板(FUNC-38~44;MU frmIgnTemplate) ---------- */
+
+/** 字段行(REP-16 从表;整组替换语义 R-22,无单行 CUD)。后端同时回吐原值与脱敏值 */
+export interface ParamTemplateItemRow {
+  id: number
+  template_id: number
+  field_key: string
+  field_value: string
+  value_shape: string
+  label?: string
+  ref_id?: string
+  axis_file?: string
+  disk_key?: string
+  field_value_masked?: string
+  masked?: boolean
+  display_note?: string
+}
+
+/** 被引用出处(R-25 两类:上游面标识声明 / 本域生效覆写;FUNC-44 拒绝时列出的清单) */
+export interface ParamTemplateReference {
+  cluster_ref: string
+  source_type: string
+  source_label: string
+  param_template_ref?: string
+  field_key?: string
+  override_value?: string
+  reason?: string
+}
+
+export interface IgnParamTemplate {
+  id: number
+  template_no: string
+  template_name: string
+  file_face: string
+  template_status: string
+  is_default: boolean
+  description: string | null
+  enabled_at: string | null
+  created_at: string
+  updated_at: string | null
+  /** 视图形:软删标记(后端 rowView,非状态第四个取值) */
+  deleted: boolean
+  /** 默认徽标只在启用态出现(INV-43 界面侧投影) */
+  default_badge: boolean
+  referenced_cluster_count: number
+  referenced_clusters: string[]
+  /** FUNC-39 详情三段:字段行整组 + 被引用出处 */
+  items?: ParamTemplateItemRow[]
+  references?: ParamTemplateReference[]
+}
+
+/* ---------- AGG-IGN-08 集群交付配置(FUNC-45~49;MU frmIgnConfig,单集群单轴当前态) ---------- */
+
+/** 单层取值格(paramLayerCell):未命中层 hit=false,note 即「为什么没命中」的原结论(让位/跳过/已回落),界面不自行推断 */
+export interface ParamLayerCell {
+  value: string
+  hit: boolean
+  note?: string
+  /** 覆写层:IGN_OVERRIDE_STATE(EFFECTIVE / ROLLED_BACK) */
+  status?: string
+  /** 覆写层:事由(治理事实必须说为什么改) */
+  reason?: string
+  applied_task_no?: string
+  applied_at?: string
+  rolled_back_at?: string
+  source_ref?: string
+}
+
+/** REP-17 一行:单字段四层轨迹 + 生效来源徽章 + 两列并列 + 追溯(后端同时回吐中文徽章标签,前端不二次翻译) */
+export interface ClusterConfigFieldRow {
+  field_key: string
+  ref_id: string
+  label: string
+  file_face: string
+  value_shape: string
+  /** 第 4 层:平台缺省面值(地板) */
+  platform_default: ParamLayerCell
+  /** 第 3 层:参数面模板值 */
+  param_template: ParamLayerCell
+  /** 第 2 层:交付版本派生值 */
+  version_derived: ParamLayerCell
+  /** 第 1 层:集群覆写 */
+  override: ParamLayerCell
+  /** 「下次将生效」列(R-21:覆写只改这一列) */
+  next_effective_value: string
+  effective_source: string
+  effective_source_label: string
+  source_ref: string
+  /** 「当前落盘」列——与上一列两个字段、不合并;取数失败时 on_disk_note 给「不可用 + 原因」 */
+  on_disk_value: string
+  on_disk_note: string
+  applied_task_no: string | null
+  applied_at: string | null
+  applied_display: string
+}
+
+export interface ClusterConfigView {
+  cluster_ref: string
+  file_face: string
+  requested_param_template_ref: string
+  hit_param_template_ref: string
+  /** 第 3 层整列级结论(未携带面标识 ⇒「本层跳过」,不回落到默认模板,R-20 分支 H) */
+  param_template_notice: string
+  requested_version_ref: string
+  version_notice: string
+  version_status: string
+  /** R-18 三态(ABSENT / MANAGED / CONFLICT),冲突态标注由受理侧判定回吐(R-24) */
+  inventory_state: string
+  inventory_note: string
+  /** 仅冲突态回吐:「已保存 · 未生效(清单归属冲突)」 */
+  save_effective_note?: string
+  fields: ClusterConfigFieldRow[]
+}
+
+/** FUNC-45 原文只读(REP-18):带行号整份文本;凭据形态命中行已由后端整行掩码,前端不二次解析 */
+export interface ClusterRawView {
+  cluster_ref: string
+  file_face: string
+  file_name: string
+  line_count: number
+  masked_line_count: number
+  content_sha256: string
+  lines: { no: number; text: string }[]
+  read_origin: string
+  notice: string
+}
+
+/** 覆写行(ign_cluster_config_override 落库形状;回落不删行,flag=1 保留可查曾改过什么) */
+export interface ClusterOverrideRow {
+  id: number
+  cluster_ref: string
+  file_face: string
+  field_key: string
+  override_value: string
+  value_shape: string
+  override_status: string
+  reason: string
+  overridden_by: string
+  overridden_at: string
+  applied_task_no: string | null
+  applied_at: string | null
+  rolled_back_at: string | null
+}
+
+export interface OverrideSaveResult {
+  override: ClusterOverrideRow
+  notice: string
+  next_effective_value?: string
+  effective_source?: string
+  effective_source_label?: string
+  on_disk_value?: string
+  on_disk_note?: string
+  save_effective_note?: string
+}
+
+export interface OverrideRollbackResult {
+  override: ClusterOverrideRow
+  notice: string
+  next_effective_value?: string
+  effective_source?: string
+  effective_source_label?: string
+}
+
+/** dry-run 逐字段轨迹(命中层回吐;layers 为四层格,FUNC-50 与 FUNC-46 共用形状) */
+export interface ValidateFieldTrace {
+  field_key: string
+  ref_id: string
+  label: string
+  file_face: string
+  value_shape: string
+  effective_value: string
+  effective_source: string
+  effective_source_label: string
+  layers: { layer: string; layer_label: string; value: string; hit: boolean; source_ref?: string; note?: string; status?: string; reason?: string }[]
+}
+
+export interface ClusterConfigValidateResult {
+  cluster_ref: string
+  file_face: string
+  passed: boolean
+  stage: string
+  reasons: string[]
+  fields: ValidateFieldTrace[]
+  param_template_ref: string
+  param_template_notice: string
+  version_ref: string
+  version_notice: string
+  inventory_state: string
+  inventory_note: string
+  would_reject_on_rewrite: boolean
+  pending_overrides: { field_key: string; value: string }[]
+  /** 「五不」声明(不写盘 / 不建任务 / 不占额度 / 不改覆写行 / 不进台账,R-23) */
+  notice: string
+}
+
 /* ---------- API ---------- */
+
+/** 参数面字段目录项（GET /api/meta/ign-param-face；后端唯一实现在面定义表，界面不再自存副本） */
+export interface ParamFaceField {
+  key: string
+  label: string
+  file_face: string
+  value_shape: string
+  ref_id: string
+  axis_file: string
+}
 
 export const ignApi = {
   dictionaries() {
     return http.get<Record<string, unknown>>('/api/v1/ign/dictionaries')
+  },
+  /** 字段键合法域（REF-17~25）：只出键的形态与归属，取值一律由业务接口按四层给出（INV-08） */
+  paramFaceCatalog() {
+    return http.get<ParamFaceField[]>('/api/meta/ign-param-face')
   },
 
   /* 交付版本(FUNC-01~08) */
@@ -420,5 +629,62 @@ export const ignApi = {
   },
   saveParams(items: { config_key: string; config_value: string }[]) {
     return http.put<PortableRow>('/api/v1/ign/params', { items })
+  },
+
+  /* 参数面模板(FUNC-38~44;MU frmIgnTemplate。启停/设默认/软删除均须事由——治理动作留痕) */
+  listParamTemplates(params: {
+    page: number
+    size: number
+    file_face?: string
+    status?: string
+    show_disabled?: string
+    keyword?: string
+  }) {
+    return http.get<PageResult<IgnParamTemplate>>('/api/v1/ign/param-template', params)
+  },
+  getParamTemplate(id: number) {
+    return http.get<IgnParamTemplate>(`/api/v1/ign/param-template/${id}`)
+  },
+  createParamTemplate(data: { template_name: string; file_face: string; description?: string }) {
+    return http.post<IgnParamTemplate>('/api/v1/ign/param-template', data)
+  },
+  saveParamTemplateItems(id: number, reason: string, items: { field_key: string; field_value: string }[]) {
+    return http.put<IgnParamTemplate>(`/api/v1/ign/param-template/${id}/items`, { reason, items })
+  },
+  enableParamTemplate(id: number, reason: string) {
+    return http.post<IgnParamTemplate>(`/api/v1/ign/param-template/${id}/enable`, { reason })
+  },
+  disableParamTemplate(id: number, reason: string) {
+    return http.post<IgnParamTemplate>(`/api/v1/ign/param-template/${id}/disable`, { reason })
+  },
+  setParamTemplateDefault(id: number, reason: string) {
+    return http.post<IgnParamTemplate>(`/api/v1/ign/param-template/${id}/default`, { reason })
+  },
+  deleteParamTemplate(id: number, reason: string) {
+    return http.del<IgnParamTemplate>(`/api/v1/ign/param-template/${id}`, { reason })
+  },
+
+  /* 集群交付配置(FUNC-45~49;MU frmIgnConfig。覆写/预检/回落的请求体口径 = service 层字段:
+     cluster_ref / file_face / field_key / value / reason;预检另有 overrides 候选数组与取值上下文两引用) */
+  getClusterConfig(params: { cluster_ref: string; file_face: string; param_template_ref?: string; version_ref?: string }) {
+    return http.get<ClusterConfigView>('/api/v1/ign/cluster/config', params)
+  },
+  getClusterRaw(params: { cluster_ref: string; file_face: string }) {
+    return http.get<ClusterRawView>('/api/v1/ign/cluster/raw', params)
+  },
+  saveClusterOverride(data: { cluster_ref: string; file_face: string; field_key: string; value: string; reason: string }) {
+    return http.put<OverrideSaveResult>('/api/v1/ign/cluster/config/override', data)
+  },
+  validateClusterConfig(data: {
+    cluster_ref: string
+    file_face?: string
+    param_template_ref?: string
+    version_ref?: string
+    overrides?: { field_key: string; value: string }[]
+  }) {
+    return http.post<ClusterConfigValidateResult>('/api/v1/ign/cluster/config/validate', data)
+  },
+  rollbackClusterOverride(data: { cluster_ref: string; file_face: string; field_key: string }) {
+    return http.post<OverrideRollbackResult>('/api/v1/ign/cluster/config/rollback', data)
   },
 }

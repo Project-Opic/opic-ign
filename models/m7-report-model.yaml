@@ -1354,7 +1354,7 @@ query_reports:
     aggregateFunction: NONE
     sortable: false
   - name: c3
-    label: 参数面模板值（第 3 层；面标识为空 ⇒ 整列显示「未携带面标识，本层跳过」）
+    label: 参数面模板值（第 3 层；未携带面标识即读接管标记快照里那张牌，两者都空 ⇒ 整列显示「未携带面标识，本层跳过」）
     dataType: String
     sourceExpression: ParamTemplateItem.fieldValue
     aggregateFunction: NONE

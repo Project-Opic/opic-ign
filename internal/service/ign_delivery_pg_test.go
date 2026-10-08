@@ -611,10 +611,11 @@ func insertFacadeVersion(t *testing.T, status, orchestrator, cni string) string 
 func TestVersionRefProfileDerivation(t *testing.T) {
 	requireDB(t)
 	name := insertFacadeVersion(t, "READY", "v1.31.9", "FLANNEL")
-	p, err := ignProfileForAction(name)
+	view, err := ignProfileForAction("", "", name)
 	if err != nil {
 		t.Fatalf("就绪版本应可被交付引用: %v", err)
 	}
+	p := view.Params
 	if p.K8sVersion != "1.31.9" {
 		t.Errorf("编排引擎版本未按版本登记派生: %q", p.K8sVersion)
 	}
@@ -634,14 +635,14 @@ func TestVersionRefAvailabilityGate(t *testing.T) {
 		{"ARCHIVED", "已归档"},
 	} {
 		name := insertFacadeVersion(t, c.status, "v1.31.9", "FLANNEL")
-		_, err := ignProfileForAction(name)
+		_, err := ignProfileForAction("", "", name)
 		be := assertBizCode(t, err, errcode.ErrForbidden)
 		if !strings.Contains(be.Msg, c.label) || !strings.Contains(be.Msg, "R-19") {
 			t.Errorf("%s 版本的拒绝理由不符: %s", c.status, be.Msg)
 		}
 	}
 
-	_, err := ignProfileForAction("VER-TEST-NOT-REGISTERED")
+	_, err := ignProfileForAction("", "", "VER-TEST-NOT-REGISTERED")
 	be := assertBizCode(t, err, errcode.ErrForbidden)
 	if !strings.Contains(be.Msg, "无登记") {
 		t.Errorf("未登记版本应走可解析口径（INV-33）: %s", be.Msg)

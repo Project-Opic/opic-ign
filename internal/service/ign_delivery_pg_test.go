@@ -930,6 +930,11 @@ func TestCancelChainRemoteNoFakeAnswer(t *testing.T) {
 
 	execNo := fmt.Sprintf("EXE-TEST-%08d", nextSeq())
 	host := fmt.Sprintf("10.77.%d.9", nextSeq()%250)
+	t.Cleanup(func() {
+		softSQL(`DELETE FROM ign_task_log WHERE task_id IN (SELECT id FROM exec_task WHERE executor_id = (SELECT id FROM executor WHERE executor_no = ?))`, execNo)
+		softSQL(`DELETE FROM exec_task WHERE executor_id = (SELECT id FROM executor WHERE executor_no = ?)`, execNo)
+		softSQL(`DELETE FROM executor WHERE executor_no = ?`, execNo)
+	})
 	mustSQL(t, `
 		INSERT INTO executor
 			(executor_no, name, display_name, executor_type, host, port, capability_flags,

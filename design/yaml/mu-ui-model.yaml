@@ -1,46 +1,86 @@
 model_type: UI
-version: '1.3'
+version: '1.5'
 domain: 交付执行域
 application:
   name: OPIC-交付执行域
   menus:
+  # v1.5 载体置换（Q-129 / Q-133 / Q-134）：两级九叶 → 一级五叶、0 二级；归堆判据 = 共享同一份主对象 / 同一条操作轴，不是「业务相近」。
+  # 五个退出侧栏的屏（image / template / tls / log / config）一字不动地转入 retiredMenus，其元素表与权限档不变。
+  - menuId: menu-ign-cluster
+    name: 集群交付
+    screenRef: frmIgnClusterIndex
+    route: /ign/cluster
+    note: v1.5 新增一级叶，本域工作起点（Q-127）—— 回答「本域替哪些集群跑过交付、此刻有没有待我处理的」；行操作「进入集群交付台」进宿主屏（非菜单项）
+  - menuId: menu-ign-version
+    name: 交付资产
+    screenRef: frmIgnVersion
+    route: /ign/version
+    note: v1.5 由「交付管理 › 版本目录」二级叶升为一级叶并就地升格为宿主屏（Q-133）：版本目录 ｜ 发行包与镜像 ｜ 参数面模板三签，都回答「这次交付什么」
+  - menuId: menu-ign-executor
+    name: 执行位
+    screenRef: frmIgnExecutor
+    route: /ign/executor
+    note: v1.5 升为一级叶并就地升格为宿主屏（Q-133）：执行机 ｜ 通道安全两签，都挂在同一个执行位对象上
+  - menuId: menu-ign-task
+    name: 交付任务
+    screenRef: frmIgnTask
+    route: /ign/task
+    note: v1.5 升为一级叶并就地升格为宿主屏（Q-133）：任务台账 ｜ 日志与对账两签 = 横看形态（跨集群）；台内的「任务」页签是同一屏的第二挂点（嵌入态带 clusterRef）
+  - menuId: menu-ign-ops
+    name: 运行观测
+    screenRef: frmIgnOps
+    route: /ign/ops
+    note: v1.5 由二级升为一级叶，单屏无页签（它本来就是跨集群的观测面，与任何单集群的一生无关）
+  retiredMenus:
+  - menuId: menu-ign-image
+    name: 发行包与镜像
+    screenRef: frmIgnImage
+    landedTab: 发行包与镜像
+    landedHost: frmIgnVersion
+  - menuId: menu-ign-template
+    name: 参数面模板
+    screenRef: frmIgnTemplate
+    landedTab: 参数面模板
+    landedHost: frmIgnVersion
+  - menuId: menu-ign-tls
+    name: 通道安全
+    screenRef: frmIgnTls
+    landedTab: 通道安全
+    landedHost: frmIgnExecutor
+  - menuId: menu-ign-log
+    name: 日志与对账
+    screenRef: frmIgnLog
+    landedTab: 日志与对账
+    landedHost: frmIgnTask ｜ frmIgnClusterConsole（一屏两宿主，本域唯一）
+  - menuId: menu-ign-config
+    name: 集群交付配置
+    screenRef: frmIgnConfig
+    landedTab: 配置
+    landedHost: frmIgnClusterConsole
+  retiredGroups:
   - menuId: menu-l1-01
     name: 交付管理
-    children:
-    - menuId: menu-ign-version
-      name: 版本目录
-      screenRef: frmIgnVersion
-    - menuId: menu-ign-image
-      name: 发行包与镜像
-      screenRef: frmIgnImage
-    - menuId: menu-ign-executor
-      name: 执行机
-      screenRef: frmIgnExecutor
-    - menuId: menu-ign-tls
-      name: 通道安全
-      screenRef: frmIgnTls
-    - menuId: menu-ign-task
-      name: 任务桥接
-      screenRef: frmIgnTask
-    - menuId: menu-ign-template
-      name: 参数面模板
-      screenRef: frmIgnTemplate
-    - menuId: menu-ign-config
-      name: 集群交付配置
-      screenRef: frmIgnConfig
-    - menuId: menu-ign-log
-      name: 日志与对账
-      screenRef: frmIgnLog
+    note: 一级分组节点撤销（其八个二级叶各自归入四个一级叶或退出侧栏）；库侧置不可见、非物理删除
   - menuId: menu-l1-02
-    name: 运行观测
-    children:
-    - menuId: menu-ign-ops
-      name: 运行观测
-      screenRef: frmIgnOps
+    name: 运行观测（分组节点）
+    note: 分组节点撤销，其唯一子叶 menu-ign-ops 升为一级叶同名
+  routeRetirements:
+  - from: /ign/image
+    to: /ign/version?tab=image
+  - from: /ign/template
+    to: /ign/version?tab=template
+  - from: /ign/tls
+    to: /ign/executor?tab=tls
+  - from: /ign/log
+    to: /ign/task?tab=log
+  - from: /ign/config
+    to: /ign/cluster
+  menuNote: v1.5 载体置换（Q-129 / Q-133 / Q-134）—— 侧栏 2 一级分组 / 9 二级 → 5 个一级叶 / 0 二级；五叶退出侧栏但屏定义与元素表一字不动，登记单位由「菜单叶」变「宿主屏页签」；集群台走深链 /ign/console/:clusterRef（非菜单项）；五条旧路由全部保留为带上下文参数的重定向（收藏夹与上游跳转不得变 404），兼容一版、下一版移除；库侧 sys_menu 旧行置不可见而非物理删除
 screens:
 - screenId: frmIgnVersion
   name: 版本列表维护
   screenType: LIST_MAINTENANCE
+  entryNote: v1.5 就地升格为宿主屏（Q-129 / Q-133）—— 侧栏「交付资产」一级叶的页签组以本屏为主体（列表维护形态保持整屏宽度），三签＝「版本目录 ｜ 发行包与镜像 ｜ 参数面模板」；另两签分别挂载 frmIgnImage、frmIgnTemplate 的既有屏定义，三签各自独立取数、各自独立保存，切换页签不共享表单状态（9.1 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -138,6 +178,9 @@ screens:
 - screenId: frmIgnImage
   name: 发行包与预推台
   screenType: LIST_MAINTENANCE
+  hostedIn: frmIgnVersion
+  tabName: 发行包与镜像
+  carrierNote: v1.5 载体置换（Q-129）—— 退出侧栏二级叶、屏定义与元素表一字未动，转为「交付资产」叶的「发行包与镜像」页签主体；嵌入态下顶部版本筛选器照常保留（发行包与预推必须以“选了哪个版本”为前提，本屏不是某集群的从属视图，与 frmIgnConfig 的嵌入态处理不同）（9.2 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -223,6 +266,7 @@ screens:
 - screenId: frmIgnExecutor
   name: 执行机操作台
   screenType: SINGLE_FORM
+  entryNote: v1.5 就地升格为宿主屏（Q-133）—— 侧栏「执行位」一级叶的两签＝「执行机 ｜ 通道安全」，「通道安全」页签挂载 frmIgnTls 既有屏定义；强制注销审批弹窗（FUNC-31~33）位置不变、不升格为页签（升格会把“审批”变成可浏览的常驻视图，与 PROC-APP-01 的单级审批语义不符）（9.3 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -363,6 +407,9 @@ screens:
 - screenId: frmIgnTls
   name: 通道安全台
   screenType: LIST_MAINTENANCE
+  hostedIn: frmIgnExecutor
+  tabName: 通道安全
+  carrierNote: v1.5 载体置换（Q-129）—— 退出侧栏二级叶、屏定义与元素表一字未动，转为「执行位」叶的「通道安全」页签主体；IGN-ROLE-04 下该页签不渲染（8.3.2），其三个功能点 FUNC-20~22 在矩阵二对该列本就全为 —，即页签隐藏与权限档位是同一件事的两个说法、不是两处独立判断（9.4 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -448,6 +495,9 @@ screens:
 - screenId: frmIgnTask
   name: 任务提交与台账
   screenType: MASTER_DETAIL_FORM
+  hostedIn: frmIgnClusterConsole
+  tabName: 任务
+  carrierNote: v1.5 载体置换 + 双挂点（Q-129 / Q-133）—— 本屏起有两处出现：① 「交付任务」叶的横看形态（跨集群台账 + 派发入口，第二签挂 frmIgnLog）；② 集群交付台的「任务」页签（嵌入态，clusterRef 由台上下文注入为只读过滤条件、该筛选器在嵌入态不渲染，横看态照常渲染）。两处是同一屏定义的两个挂点，权限档一致（IGN-ROLE-04 两处同关）。本屏自身同时升格为宿主屏（任务台账 ｜ 日志与对账两签），且仍保留自己的菜单叶（9.5 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -550,6 +600,11 @@ screens:
 - screenId: frmIgnLog
   name: 日志与对账台
   screenType: QUERY_LIST
+  hostedIn:
+  - frmIgnTask
+  - frmIgnClusterConsole
+  tabName: 日志与对账
+  carrierNote: v1.5 载体置换（Q-129，本域唯一一屏两宿主）—— 退出侧栏二级叶、屏定义与元素表未变，屏内三页签（日志 / 纠偏 / 门面台账）内部结构也未变，v1.5 只把外层入口从二级菜单换成页签。两处挂点差的是过滤上下文：台内挂点带 clusterRef（该集群的日志与偏差），横看挂点不带；三页签在两种形态下都用同一套 REP-11 ~ REP-14 查询面，不复制第二份报表绑定。IGN-ROLE-04 在两处均可见本屏（这是它在本域的主要工作面，8.3.2 ③）（9.6 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -842,6 +897,9 @@ screens:
 - screenId: frmIgnTemplate
   name: 参数面模板维护
   screenType: MASTER_DETAIL_FORM
+  hostedIn: frmIgnVersion
+  tabName: 参数面模板
+  carrierNote: v1.5 载体置换（Q-129）—— 退出侧栏二级叶、屏定义与元素表未变，“跨集群治理资产”的性质也未变：挂进「交付资产」叶是因为该叶回答“下次要交付什么 / 用什么参数”，而不是“某个集群现在怎样”；本屏不接受集群上下文，即使从台内跳过来也保持横看形态（8.1.1 收拢理由第 2 条的具体化）（9.8 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -1028,6 +1086,9 @@ screens:
 - screenId: frmIgnConfig
   name: 集群交付配置台
   screenType: LIST_MAINTENANCE
+  hostedIn: frmIgnClusterConsole
+  tabName: 配置
+  carrierNote: v1.5 载体置换（Q-129 / Q-130）—— 退出侧栏二级叶、屏定义与元素表一字未动（含四层取值、来源徽章、两列不合并、原文视图独立发牌等全部 v1.3 口径）。本屏是本批唯一没有横看入口的屏：它的天然坐标就是“单集群 + 单文件面”，脱离集群上下文无意义，因此 v1.5 起只能从集群交付台进入（9.9 载体注记）
   layout: ''
   elements:
   - id: el01
@@ -1037,7 +1098,8 @@ screens:
     required: true
     dataBinding: ClusterConfigOverride.clusterRef
     role: QUERY
-    valueNote: 跨域引用 O-CLC（INV-33），跳选框；只列本域有交付记录或已登记配置的集群；未选定不出表
+    dataSource: REP-19
+    valueNote: 跨域引用 O-CLC（INV-33），跳选框；只列本域有交付记录或已登记配置的集群 —— v1.5 起该候选集由 REP-19 本域交付集群索引供数（FUNC-52 / ign:FUNC-52），不再取自参数面模板的被引用集群、也不再要求 FUNC-38 的牌（DEF-11 订正）；台内嵌入态由上下文给定、不渲染本选择器；未选定不出表
   - id: el02
     type: SELECT
     label: 文件面
@@ -1203,6 +1265,166 @@ screens:
     behaviorRef: FUNC-49
     permissionRef:
     - PERM-FUNC-49
+- screenId: frmIgnClusterIndex
+  name: 本域交付集群索引
+  screenType: QUERY_LIST
+  layout: v1.5 新增屏（Q-127）—— 查询列表形态，REP-19 的唯一呈现面，侧栏第一叶的工作起点；主栏 = 一行一集群标识的派生摘要表（列 = 集群标识 / 交付记录数 / 最近一次交付 / 已登记覆写字段 / 未决偏差 + 单一动作「进入集群交付台」），无表单区、无工具栏写动作。三条刻意的"不做"：不显示上游集群名称 / 生命周期状态 / 健康（INV-33）、不显示步骤 / 进度条 / 步进器（Q-69 裁定 ②，本表连"第几步"这一列都不存在）、不提供导出（元素表里的「导出」行是无控件项，故本屏不登记该元素 —— 与 REP-11 / REP-18 同族，5.20 ⑬）
+  elements:
+  - id: el01
+    type: TEXTBOX
+    label: 集群标识（筛选）
+    io: I
+    required: false
+    dataBinding: ExecTask.clusterRef
+    role: QUERY
+    dataSource: REP-19
+    valueNote: 前缀 / 包含匹配；不做存在性校验 —— 本域不持有集群有效性判据（INV-33）
+  - id: el02
+    type: SELECT
+    label: 待办筛项
+    io: I
+    required: false
+    dataBinding: ExecTask.clusterRef
+    role: QUERY
+    dataSource: REP-19
+    valueNote: 四值：全部 / 有在跑任务 / 有生效覆写 / 有未决偏差；均为对本表既有列的过滤，不引入新查询面（9.10.2）
+  - id: el03
+    type: TEXT
+    label: 集群标识（列）
+    io: O
+    required: false
+    dataBinding: ExecTask.clusterRef
+    dataSource: REP-19
+    valueNote: 键集 = ExecTask.clusterRef ∪ ClusterConfigOverride.clusterRef 去重（REP-19 口径 ①）；可复制、点击进入台；不渲染上游名称（本域无此数据）
+  - id: el04
+    type: TEXT
+    label: 交付记录数（列）
+    io: O
+    required: false
+    dataBinding: ExecTask
+    dataSource: REP-19
+    valueNote: 按标识计数、含终态记录（口径 12：终态默认可见）
+  - id: el05
+    type: TEXT
+    label: 最近一次交付（列）
+    io: O
+    required: false
+    dataBinding: ExecTask
+    dataSource: REP-19
+    valueNote: 任务编号 + 结束时间 + 结果徽章，值域为任务状态字典；LOST 单列不并入失败（口径 7 / 5.20 ⑭）；点击跳台内「日志与对账」页签，与 REP-10 同源
+  - id: el06
+    type: TEXT
+    label: 已登记覆写字段（列）
+    io: O
+    required: false
+    dataBinding: ClusterConfigOverride
+    dataSource: REP-19
+    valueNote: ClusterConfigOverride 侧生效态计数；已回落的不计入但台内可见（避免"数字对不上"的疑问）
+  - id: el07
+    type: TEXT
+    label: 未决偏差（列）
+    io: O
+    required: false
+    dataBinding: ExecTask
+    dataSource: REP-19
+    valueNote: 该集群处于 LOST 或已发生状态修正的任务计数，由 ExecTask 的状态与结论依据列派生；逐笔纠偏明细不在本表、在台内「日志与对账」页签（REP-12 同源）；为 0 时显示 0 而非留空（口径 11：计数与观测视觉可分）
+  - id: el08
+    type: TEXT
+    label: 统计时点标注
+    io: O
+    required: false
+    dataBinding: ''
+    dataSource: REP-19
+    valueNote: 必现，明示摘要为即时派生、非缓存（"摘要截至 …，进入台内以台内实时数据为准"）；不得读作"该集群现在的状态"
+  - id: el09
+    type: BUTTON
+    label: 进入集群交付台（动作列）
+    io: I
+    required: false
+    dataBinding: ''
+    valueNote: 恒可见（可见性判据只有一条：该标识在本表出现过）；跳转携带 clusterRef 进 /ign/console/:clusterRef，台内缺省页签按 9.11.6 派生 —— 本列是路由出口、不是功能点，故不登记 action
+  - id: el10
+    type: TEXT
+    label: 空态文案
+    io: O
+    required: false
+    dataBinding: ''
+    dataSource: REP-19
+    valueNote: 「本域尚未替任何集群执行过交付 —— 交付任务由上游中心派发或在本域「交付任务」叶提交」；不得写成"没有集群"（后者是上游的事实，本域无权断言）
+  actions:
+  - actionId: act-FUNC-52
+    name: 本域交付集群索引查询
+    actionType: QUERY
+    behaviorRef: FUNC-52
+    permissionRef:
+    - PERM-FUNC-52
+- screenId: frmIgnClusterConsole
+  name: 集群交付台
+  screenType: MASTER_DETAIL_FORM
+  entryNote: v1.5 新增宿主屏（Q-127 / Q-130）—— 无菜单叶，由 frmIgnClusterIndex 行操作「进入集群交付台」经深链 /ign/console/:clusterRef 进入；主 = 一个集群在本域的头部徽章条，从 = 三页签组（落在既有四档形态里，不为新形态扩枚举）。宿主屏零新增语义：不新增功能点 / 报表 / 权限码 / 字典 / 规则（v1.5 新增的 FUNC-52 / REP-19 / PERM-FUNC-52 落在索引屏，不是本屏的新增物）
+  layout: 以「这一个集群在本域交付执行的一生」为主体的主从表形态：三签 = 配置 ｜ 任务 ｜ 日志与对账（本域三种视角的并列，不是流程节点）；与 O-CLC 集群台的根本差别 —— 那边有「安装」步进器因为步进状态是其自有对象，本域只有任务与配置当前态，三签全部是读与治理视角，把步进器搬进来等于在本域复制一份上游状态机（同时违反 Q-69 与 INV-33）；缺省页签按 9.11.6 派生（有未决偏差 ⇒ 日志与对账；有在跑任务 ⇒ 任务；无在跑有生效覆写 ⇒ 配置；其余 ⇒ 配置），页签切换不重载徽章条
+  elements:
+  - id: el01
+    type: TEXT
+    label: 集群标识徽章
+    io: O
+    required: false
+    dataBinding: ExecTask.clusterRef
+    dataSource: REP-19
+    valueNote: 进入即锁上下文（借 O-CLC 的 INV-32 手法，但本域没有那条 INV，靠台上下文与路由参数实现、不落不变式）
+  - id: el02
+    type: TEXT
+    label: 派生摘要徽章（最近一次 / 在跑 / 生效覆写 / 未决偏差）
+    io: O
+    required: false
+    dataBinding: ExecTask
+    dataSource: REP-19
+    valueNote: 只允许 REP-19 的派生值 + 标识本身；禁止出现上游集群属性、禁止"第 N 步"；右侧给「返回索引」（回 /ign/cluster，返回后整表重取，9.10.7 ①）
+  - id: el03
+    type: BUTTON
+    label: 返回索引
+    io: I
+    required: false
+    dataBinding: ''
+    valueNote: 回 /ign/cluster（索引屏），返回后整表重取（9.10.7 ①）；路由出口、不是功能点，故不登记 action
+  - id: el04
+    type: TAB
+    label: 页签组（配置 ｜ 任务 ｜ 日志与对账）
+    io: I
+    required: false
+    dataBinding: ''
+    valueNote: 按各自主数据权限码不渲染（8.3.2 ①：ign:FUNC-46 / ign:FUNC-23|25 / ign:FUNC-25）；缺位页签不出现在序列里；深链落进无权签 ⇒ 落回第一个有权签（8.3.2 ②），接口侧仍由各权限码把门
+  - id: el05
+    type: TEXT
+    label: 配置页签主体
+    io: O
+    required: false
+    dataBinding: ''
+    dataSource: REP-17
+    valueNote: 回指 9.9.2（frmIgnConfig）全部元素，本表不复制一行；嵌入态下「集群标识」选择器不渲染、「文件面」选择器照常；原文视图（REP-18 / ign:FUNC-45）的登记位仍在 frmIgnConfig，随主体呈现在本签、本表不重复登记（Q-117 同判据：上移到台级的只有页签主体，独立发牌的原文腿不升格）
+  - id: el06
+    type: TEXT
+    label: 任务页签主体
+    io: O
+    required: false
+    dataBinding: ''
+    dataSource: REP-09
+    valueNote: 回指 9.5.2（frmIgnTask，本域唯一"一屏两宿主"的横看/纵看双形态）；clusterRef 由上下文注入为只读过滤条件、不是可改的筛选器
+  - id: el07
+    type: TEXT
+    label: 日志与对账页签主体
+    io: O
+    required: false
+    dataBinding: ''
+    dataSource: REP-11
+    valueNote: 回指 9.6.2（frmIgnLog，屏内三页签结构不变）；本集群 scope 的 REP-11 ~ REP-14 是同一报表的第二个呈现入口、不是新报表；FUNC-51 的跨中心日志腿不落在本域界面（它是给上游的通道）
+  - id: el08
+    type: BUTTON
+    label: 集群上游信息出口
+    io: I
+    required: false
+    dataBinding: ''
+    valueNote: 需要看集群本身（名称 / 状态 / 节点）时一律跳转 O-CLC，不留副本、不做内嵌卡片（16 项范围外声明 + INV-33）—— 跨域路由出口，本域无对应功能点
 - screenId: frmPublicEntry01
   name: 跨中心版本视图
   screenType: LIST_MAINTENANCE

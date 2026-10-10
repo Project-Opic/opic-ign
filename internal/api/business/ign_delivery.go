@@ -78,6 +78,20 @@ func IgnFacadeReceipt(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// IgnFacadeDeliveryLog GET /api/v1/ign/delivery/log/:ref?since_seq=&limit= (FUNC-51)。
+// 与回执(FUNC-35)分牌：回执给结论，本通道给 ezctl/ansible 日志原文腿。行级掩码早于写盘
+// （INV-40），此处不再二次处理；成功与拒绝都落一条留痕，来源标为上游代理读。flat JSON 回吐。
+func IgnFacadeDeliveryLog(c *gin.Context) {
+	sinceSeq, _ := strconv.ParseInt(c.Query("since_seq"), 10, 64)
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	out, err := service.FacadeDeliveryLog(c.Param("ref"), sinceSeq, limit, common.UserOf(c))
+	if err != nil {
+		facadeFail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
 // IgnFacadeCancel POST /api/v1/ign/delivery/cancel/:ref (FUNC-36)。
 func IgnFacadeCancel(c *gin.Context) {
 	out, err := service.DeliveryCancel(c.Param("ref"), common.UserOf(c))

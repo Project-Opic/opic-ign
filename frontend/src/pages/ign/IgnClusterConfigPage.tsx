@@ -6,6 +6,8 @@
 // 清单原文只读(FUNC-45,REP-18:独立权限码 ign:FUNC-45、逐次留痕、命中凭据形态整行掩码,无该权限不渲染入口也不报错 R-26)。
 // 不变量中文结论(面外键 INV-41 / 坐标自洽 INV-42 / 冲突态「已保存 · 未生效」R-24 / 让位与各层跳过原因 R-20)一律由后端
 // 回吐、经响应拦截器原样透出;本屏不重写规则文案、不自行推断(R-24:冲突标注是受理侧判定,不是界面猜测)。
+// v1.5 载体注记:本屏退出侧栏，改挂两处 —— 独立路由 /ign/config 的重定向与集群交付台「配置」页签
+//（9.11.2：台内只由上下文注入 clusterRef，集群标识选择器不渲染、文件面选择器照常；元素表与查询面一字未动）。
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
@@ -79,14 +81,26 @@ function LayerCellText({ cell }: { cell: ParamLayerCell }) {
   )
 }
 
-export default function IgnClusterConfigPage() {
+export default function IgnClusterConfigPage({
+  clusterRef: ctxClusterRef = '',
+  onSaved,
+  refreshToken = 0,
+}: {
+  clusterRef?: string
+  /** 台内挂点：覆写保存 / 回落成功后回调，让徽章条按 9.11.7 ①② 重取派生摘要 */
+  onSaved?: () => void
+  /** 台内挂点：台级自增计数 ⇒ 「当前落盘」列随「任务」页签的派发成功重取（9.11.7 ③） */
+  refreshToken?: number
+}) {
   const hasPerm = usePermission()
   const paramFace = useParamFace()
   const navigate = useNavigate()
   const [query] = useSearchParams()
 
-  // 模板屏 gotoConfig 携带的三个 query：进入即定位到该集群 / 该面 / 该模板的取值上下文视图
-  const [clusterRef, setClusterRef] = useState(query.get('cluster_ref') || '')
+  // 集群标识两来源：台内挂点由上下文给定（9.11.2「嵌入态下集群标识选择器不渲染，文件面选择器照常」），
+  // 独立屏则由模板屏 gotoConfig / 索引跳转携带的 query 定位。
+  // 模板屏 gotoConfig 另携带该面 / 该模板两个取值上下文 query。
+  const [clusterRef, setClusterRef] = useState(ctxClusterRef || query.get('cluster_ref') || '')
   const [fileFace, setFileFace] = useState(query.get('file_face') || '')
   const [ctxTemplateRef, setCtxTemplateRef] = useState(query.get('param_template_ref') || '')
   const [ctxVersionRef, setCtxVersionRef] = useState(query.get('version_ref') || '')
@@ -110,16 +124,16 @@ export default function IgnClusterConfigPage() {
 
   const ready = !!clusterRef && !!fileFace
 
-  // el01「只列本域有交付记录或已登记配置的集群」：取数走 FUNC-38 列表回吐的 referenced_clusters 并集
-  //（两类来源=上游面标识声明快照 + 本域生效覆写依据，R-25 同源；无 FUNC-38 发牌则不出声，选项退化为跳转携带值）
+  // el01「只列本域有交付记录或已登记配置的集群」：DEF-11 订正后取数走 FUNC-52 本域交付集群索引
+  //（REP-19 的键集就是交付记录与覆写登记两处 cluster_ref 的并集去重，与需求口径同一事实源）；
+  // 原先借 FUNC-38 模板列表回吐的 referenced_clusters 并集既取错数据（模板引用面 ≠ 本域交付面），
+  // 也拿错了鉴权档位（读集群列表不该要模板维护牌）。无该权限则不出声，选项退化为跳转携带值。
   useEffect(() => {
-    if (!hasPerm('ign:FUNC-38')) return
+    if (ctxClusterRef || !hasPerm('ign:FUNC-52')) return
     ignApi
-      .listParamTemplates({ page: 1, size: 200 })
+      .listDeliveryClusters({ page: 1, size: 200 })
       .then((res) => {
-        const set = new Set<string>()
-        for (const t of res.list || []) (t.referenced_clusters || []).forEach((c) => set.add(c))
-        setClusterOptions([...set].sort())
+        setClusterOptions((res.list || []).map((r) => r.cluster_ref).sort())
       })
       .catch(() => {
         // 拦截器已提示；选项取数失败不阻塞跳转携带的集群标识定位
@@ -151,6 +165,13 @@ export default function IgnClusterConfigPage() {
   useEffect(() => {
     loadView()
   }, [loadView])
+
+  // 9.11.7 ③：台内「任务」页签派发成功 ⇒ 本签「当前落盘」列重取
+  //（B-AUTO-15 回填 appliedTaskNo 是本域唯一让落盘列动的因果链，台级用自增计数广播）
+  useEffect(() => {
+    if (refreshToken) loadView()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken])
 
   const selectOptions = useMemo(() => {
     const opts = [...clusterOptions]
@@ -220,6 +241,8 @@ export default function IgnClusterConfigPage() {
       if (res.save_effective_note) message.warning(res.save_effective_note)
       setOvRow(null)
       await loadView()
+      // 9.11.7 ②：覆写保存成功 ⇒ 台内徽章"生效覆写字段数"即时重算（新坐标才 +1，同坐标改写不加数）
+      onSaved?.()
     } catch {
       // 拦截器已透出后端中文拒绝（事由必填 / 空值不是回落入口 / 面外键治理拒绝 / 形态校验）
     } finally {
@@ -233,6 +256,8 @@ export default function IgnClusterConfigPage() {
       const res = await ignApi.rollbackClusterOverride({ cluster_ref: clusterRef, file_face: r.file_face, field_key: r.field_key })
       message.success(res.notice)
       await loadView()
+      // 9.11.7 ①：回落同样是状态变更 ⇒ 徽章条重取
+      onSaved?.()
     } catch {
       // 拦截器已透出（如重复回落的 ErrState 结论：回落按钮只对「生效」行渲染）
     }
@@ -441,20 +466,23 @@ export default function IgnClusterConfigPage() {
       />
 
       <Form layout="inline" style={{ marginBottom: 12 }}>
-        <Form.Item label="集群标识" tooltip="跨域引用 O-CLC（INV-33）；只列本域有交付记录或已登记配置的集群；未选定不出表">
-          <Select
-            showSearch
-            style={{ width: 240 }}
-            placeholder="选择集群（跳选框）"
-            value={clusterRef || undefined}
-            options={selectOptions}
-            onChange={(v) => {
-              setClusterRef(v || '')
-              setView(null)
-              setDry(null)
-            }}
-          />
-        </Form.Item>
+        {/* 9.11.2：台内挂点由上下文给定，「集群标识」选择器不渲染（标识已在徽章条上），「文件面」选择器照常 */}
+        {!ctxClusterRef && (
+          <Form.Item label="集群标识" tooltip="跨域引用 O-CLC（INV-33）；只列本域有交付记录或已登记配置的集群；未选定不出表">
+            <Select
+              showSearch
+              style={{ width: 240 }}
+              placeholder="选择集群（跳选框）"
+              value={clusterRef || undefined}
+              options={selectOptions}
+              onChange={(v) => {
+                setClusterRef(v || '')
+                setView(null)
+                setDry(null)
+              }}
+            />
+          </Form.Item>
+        )}
         <Form.Item label="文件面" tooltip="字典 IGN_CONFIG_FILE_FACE；一次只看一轴，切换轴即整表重载（两轴键域不同，混看会得出错误的「当前值」）">
           <Select
             style={{ width: 200 }}

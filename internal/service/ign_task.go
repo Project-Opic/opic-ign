@@ -498,6 +498,14 @@ func ListReconcileLogs(page, size int, filters map[string]any) (*Page, error) {
 		kw := "%" + v + "%"
 		args = append(args, kw, kw, kw, kw)
 	}
+	// 集群交付台的「日志与对账」页签带 clusterRef 上下文（9.6 载体注记 / 9.11.1）。本表没有
+	// cluster_ref 列（v1.5 零 DDL 不加列），scope 由 exec_task 现算派生：只有挂在任务上的留痕
+	// 属于某个集群，执行机维度的留痕不随集群走。
+	if v := strings.TrimSpace(Str(filters["cluster_ref"])); v != "" {
+		where += ` AND object_type = 'TASK' AND object_no IN (
+			SELECT task_no FROM exec_task WHERE flag = 1 AND cluster_ref = ?)`
+		args = append(args, v)
+	}
 	total, err := qCount(`SELECT COUNT(*) FROM ign_reconcile_log `+where, args...)
 	if err != nil {
 		return nil, err

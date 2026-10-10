@@ -128,7 +128,8 @@ func HasPermission(db *gorm.DB, userID int64, code string) (bool, error) {
 	return false, nil
 }
 
-// GetMenus 取用户可见菜单(DIRECTORY 聚合可见 MENU 子项)。
+// GetMenus 取用户可见菜单：一级 MENU 叶直接端出(v1.5 Q-129：侧栏五叶不带目录)，
+// DIRECTORY 聚合其可见 MENU 子项(无可见子项的目录不出)；两类条目同按 sort_order 混排。
 func GetMenus(db *gorm.DB, userID int64) ([]map[string]any, error) {
 	codes, err := GetPermissionCodes(db, userID)
 	if err != nil {
@@ -154,36 +155,43 @@ func GetMenus(db *gorm.DB, userID int64) ([]map[string]any, error) {
 			}
 		}
 	}
-	var menus []map[string]any
-	for _, dir := range resources {
-		if Str(dir["type"]) != "DIRECTORY" {
-			continue
+	leafNode := func(r map[string]any) map[string]any {
+		return map[string]any{
+			"id":              Int(r["id"]),
+			"name":            r["name"],
+			"code":            r["code"],
+			"icon":            r["icon"],
+			"path":            r["path"],
+			"permission_code": r["permission_code"],
 		}
-		var children []map[string]any
-		for _, c := range resources {
-			if Int(c["parent_id"]) == Int(dir["id"]) && allowed[Int(c["id"])] {
-				children = append(children, map[string]any{
-					"id":              Int(c["id"]),
-					"name":            c["name"],
-					"code":            c["code"],
-					"icon":            c["icon"],
-					"path":            c["path"],
-					"permission_code": c["permission_code"],
+	}
+	var menus []map[string]any
+	for _, r := range resources {
+		switch Str(r["type"]) {
+		case "MENU":
+			if Int(r["parent_id"]) == 0 && allowed[Int(r["id"])] {
+				menus = append(menus, leafNode(r))
+			}
+		case "DIRECTORY":
+			var children []map[string]any
+			for _, c := range resources {
+				if Int(c["parent_id"]) == Int(r["id"]) && allowed[Int(c["id"])] {
+					children = append(children, leafNode(c))
+				}
+			}
+			if len(children) > 0 {
+				if children == nil {
+					children = []map[string]any{}
+				}
+				menus = append(menus, map[string]any{
+					"id":       Int(r["id"]),
+					"name":     r["name"],
+					"code":     r["code"],
+					"icon":     r["icon"],
+					"path":     r["path"],
+					"children": children,
 				})
 			}
-		}
-		if len(children) > 0 {
-			if children == nil {
-				children = []map[string]any{}
-			}
-			menus = append(menus, map[string]any{
-				"id":       Int(dir["id"]),
-				"name":     dir["name"],
-				"code":     dir["code"],
-				"icon":     dir["icon"],
-				"path":     dir["path"],
-				"children": children,
-			})
 		}
 	}
 	if menus == nil {

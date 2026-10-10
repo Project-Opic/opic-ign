@@ -54,6 +54,9 @@ func SetupRoutes(r *gin.Engine) {
 		// FUNC-50 原文形态（hosts / config.yml 逐字只读）：同一套掩码 + 逐次审计，来源标为上游代理读；
 		// 不新增权限码——身份与取值通道同一档（需求 FUNC-50「字段级视图 / 四层来源 / 覆写台账 / 原文」的原文腿）。
 		facade.GET("/config/:clusterRef/raw", perm("ign:FUNC-50", business.IgnFacadeDeliveryConfigRaw)...)
+		// FUNC-51 跨中心交付执行日志只读通道（ezctl/ansible 原文腿，集群中心向导日志代理直展）：
+		// 独立发牌 ign:FUNC-51，不与回执 ign:FUNC-35 合并——回执可见不等于原文可见。
+		facade.GET("/log/:ref", perm("ign:FUNC-51", business.IgnFacadeDeliveryLog)...)
 	}
 
 	// ---- 登录路由组 ----
@@ -158,6 +161,9 @@ func SetupRoutes(r *gin.Engine) {
 			ign.POST("/param-template/:id/disable", perm("ign:FUNC-42", business.IgnParamTemplateDisable)...)
 			ign.POST("/param-template/:id/default", perm("ign:FUNC-43", business.IgnParamTemplateSetDefault)...)
 			ign.DELETE("/param-template/:id", perm("ign:FUNC-44", business.IgnParamTemplateDelete)...)
+
+			// 本域交付集群索引(FUNC-52;REP-19,v1.5 侧栏「集群交付」叶的取数口)
+			ign.GET("/cluster/index", perm("ign:FUNC-52", business.IgnClusterIndexList)...)
 
 			// 集群交付配置(FUNC-45~49;AGG-IGN-08「集群交付配置」屏)
 			// FUNC-45 原文视图独立权限码(R-26:判据是内容敏感度)——不随 FUNC-46 发牌附带

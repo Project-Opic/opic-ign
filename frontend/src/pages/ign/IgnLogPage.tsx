@@ -1,5 +1,6 @@
-// MU frmIgnLog 交付管理 · 日志与对账台(QUERY_LIST)
+// MU frmIgnLog 日志与对账台(QUERY_LIST;v1.5 起退出侧栏，两处挂点：「交付任务」叶的「日志与对账」签 + 集群交付台的「日志与对账」签)
 // 三页签：任务台账与日志(FUNC-25/26/27,REP-11)/ 对账与纠偏(FUNC-28,REP-12)/ 门面受理台账(FUNC-37,REP-14)。
+// 挂点差的是过滤上下文(9.6 载体注记)：传入 clusterRef 即本集群 scope，三页签共用同一套 REP-11~REP-14 查询面、不复制第二份报表绑定。
 // 规则:R-06 计数纠偏留痕;R-09 状态修正/任务丢失显式留痕;R-12 治理拒绝与 R-15 执行位不可用记录可查;
 //       INV-38 行游标空洞显式标注;R-16/INV-40 已脱敏标记与门面回读同源。
 import { useCallback, useEffect, useState } from 'react'
@@ -23,11 +24,18 @@ const EVENT_TYPES = [
 
 const TASK_STATUS = ['RUNNING', 'CANCELLING', 'COMPLETED', 'FAILED', 'CANCELLED', 'LOST']
 
-export default function IgnLogPage() {
+// 屏内三页签的自有值域（9.6 载体注记：内部结构未变）。外层宿主深链占用 ?tab=（/ign/task?tab=log），
+// 本屏的子签改由 ?log_tab= 承载；旧链接的 ?tab=facade 只在值命中自有值域时兼容识别一次。
+const SUB_TABS = ['task', 'reconcile', 'facade']
+
+export default function IgnLogPage({ clusterRef = '' }: { clusterRef?: string }) {
   const hasPerm = usePermission()
   const [query] = useSearchParams()
-  // 任务详情「来源」列反查跳转：/ign/log?tab=facade&source_task_no=xxx
-  const [tab, setTab] = useState(query.get('tab') || 'task')
+  // 任务详情「来源」列反查跳转：/ign/task?tab=log&log_tab=facade&source_task_no=xxx
+  const [tab, setTab] = useState(() => {
+    const v = query.get('log_tab') || query.get('tab') || 'task'
+    return SUB_TABS.includes(v) ? v : 'task'
+  })
   const [taskForm] = Form.useForm<{ keyword?: string; task_status?: string }>()
   const [recForm] = Form.useForm<{ event_type?: string; keyword?: string }>()
   const [facadeForm] = Form.useForm<{ source_task_no?: string; source_step_index?: string; cluster_ref?: string; step_code?: string; verdict_source?: string; task_status?: string }>()
@@ -63,7 +71,8 @@ export default function IgnLogPage() {
       setTaskLoading(true)
       try {
         const v = taskForm.getFieldsValue()
-        const res = await ignApi.listTasks({ page: p, size: s, ...v })
+        // 载体注记（v1.5）：台内挂点带 clusterRef（本集群 scope），横看挂点不带 —— 同一套查询面
+        const res = await ignApi.listTasks({ page: p, size: s, ...(clusterRef ? { cluster_ref: clusterRef } : {}), ...v })
         setTasks(res.list || [])
         setTaskTotal(res.total || 0)
       } catch {
@@ -72,7 +81,7 @@ export default function IgnLogPage() {
         setTaskLoading(false)
       }
     },
-    [taskPage, taskForm],
+    [taskPage, taskForm, clusterRef],
   )
 
   const loadRec = useCallback(
@@ -80,7 +89,7 @@ export default function IgnLogPage() {
       setRecLoading(true)
       try {
         const v = recForm.getFieldsValue()
-        const res = await ignApi.listReconcile({ page: p, size: s, ...v })
+        const res = await ignApi.listReconcile({ page: p, size: s, ...(clusterRef ? { cluster_ref: clusterRef } : {}), ...v })
         setRecRows(res.list || [])
         setRecTotal(res.total || 0)
       } catch {
@@ -89,7 +98,7 @@ export default function IgnLogPage() {
         setRecLoading(false)
       }
     },
-    [recPage, recForm],
+    [recPage, recForm, clusterRef],
   )
 
   const loadFacade = useCallback(
@@ -97,7 +106,10 @@ export default function IgnLogPage() {
       if (!hasPerm('ign:FUNC-37')) return
       setFacadeLoading(true)
       try {
-        const res = await ignApi.listFacadeTasks({ page: p, size: s, ...facadeForm.getFieldsValue() })
+        // 台内挂点由上下文给定集群，屏上那个可改的集群筛选器不渲染，这里也就不再取表值
+        const v = facadeForm.getFieldsValue()
+        if (clusterRef) v.cluster_ref = clusterRef
+        const res = await ignApi.listFacadeTasks({ page: p, size: s, ...v })
         setFacadeRows(res.list || [])
         setFacadeTotal(res.total || 0)
       } catch {
@@ -106,7 +118,7 @@ export default function IgnLogPage() {
         setFacadeLoading(false)
       }
     },
-    [facadePage, facadeForm, hasPerm],
+    [facadePage, facadeForm, hasPerm, clusterRef],
   )
 
   const openLog = async (r: ExecTask) => {
@@ -386,9 +398,11 @@ export default function IgnLogPage() {
                       <Form.Item name="source_step_index" label="来源步骤序号">
                         <Input allowClear type="number" onPressEnter={() => loadFacade(1)} style={{ width: 120 }} />
                       </Form.Item>
-                      <Form.Item name="cluster_ref" label="集群标识">
-                        <Input allowClear onPressEnter={() => loadFacade(1)} style={{ width: 150 }} />
-                      </Form.Item>
+                      {!clusterRef && (
+                        <Form.Item name="cluster_ref" label="集群标识">
+                          <Input allowClear onPressEnter={() => loadFacade(1)} style={{ width: 150 }} />
+                        </Form.Item>
+                      )}
                       <Form.Item name="step_code" label="步骤编码">
                         <Select allowClear style={{ width: 120 }} options={dictItems(dict, 'IGN_INSTALL_STEP').map((d) => ({ value: d.code, label: d.code }))} />
                       </Form.Item>

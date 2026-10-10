@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -165,31 +166,29 @@ var seedPermissions = []struct{ Code, Name, TargetType, TargetRef string }{
 	{"system:manage", "管理控制台", "MENU", "Admin_Console"},
 }
 
-// seedResources 资源/菜单(mu-ui-model menus:交付管理 + 运行观测 + 审批中心 + 系统管理)。
+// seedResources 资源/菜单(mu-ui-model application.menus)。
+//
+// v1.5 载体置换（Q-129 / Q-133 / Q-134 / MU menuNote）：侧栏由「两个一级分组 + 九个二级叶」
+// 收成**一级五叶**——集群交付 / 交付资产 / 执行位 / 交付任务 / 运行观测。发行包与镜像 /
+// 参数面模板 / 通道安全 / 日志与对账 / 集群交付配置五叶退出侧栏（登记在 MU retiredMenus，
+// 屏幕与元素表一字不动，呈现载体换成宿主屏页签）；集群索引屏的行操作进宿主屏
+// frmIgnClusterConsole，该屏从来没有菜单叶，由深链 /ign/console/:clusterRef 进入。
+// 旧库存量行由 convergeMenusV15 置不可见，不物理删除。
+//
+// PermCode 一律取该屏**主数据接口**的行为码（菜单只管入口可见，屏内动作各按自己的牌收口）：
+// 52 集群索引 / 06 版本清单 / 17 执行机清单 / 25 任务台账 / 29 统计总览。
+// Sort 沿用重组前这些叶的既有取值（11/13/15/21）——只换挂载位与可见性，不重排序号；
+// 新增的集群交付叶取 10（原一级分组的位次，分组本身已置不可见，可见行里不撞序）。
 var seedResources = []struct {
 	Parent, Name, Code, PermCode, Type, Path, Icon string
 	Sort                                           int
 }{
-	// L1 交付管理(mu menu-l1-01)
-	{"", "交付管理", "menu-ign-delivery", "", "DIRECTORY", "", "DeploymentUnit", 10},
-	{"menu-ign-delivery", "版本目录", "menu-ign-version", "ign:FUNC-06", "MENU", "/ign/version", "Appstore", 11},
-	{"menu-ign-delivery", "发行包与镜像", "menu-ign-image", "ign:FUNC-12", "MENU", "/ign/image", "Cube", 12},
-	{"menu-ign-delivery", "执行机", "menu-ign-executor", "ign:FUNC-17", "MENU", "/ign/executor", "Cluster", 13},
-	{"menu-ign-delivery", "通道安全", "menu-ign-tls", "ign:FUNC-22", "MENU", "/ign/tls", "SafetyCertificate", 14},
-	{"menu-ign-delivery", "任务桥接", "menu-ign-task", "ign:FUNC-25", "MENU", "/ign/task", "Thunderbolt", 15},
-	// MU v1.3 menu-ign-template「参数面模板」：入口门禁取本屏主数据接口 FUNC-38（四岗位共有的列表查询发牌）。
-	// sort=15 与任务桥接同值，GetMenus 按 (sort_order,id) 升序天然落在任务桥接之后、日志与对账(16)之前，与 MU 菜单序一致。
-	{"menu-ign-delivery", "参数面模板", "menu-ign-template", "ign:FUNC-38", "MENU", "/ign/template", "Profile", 15},
-	// MU v1.3 menu-ign-config「集群交付配置」：入口门禁取本屏主数据接口 FUNC-46（与模板屏取 FUNC-38 同一口径：
-	// 列表/主数据查询的最小公共面，不取只覆盖单个页签的行为码）。sort=15 依 (sort_order,id) 升序落在
-	// 参数面模板之后、日志与对账(16)之前，与 MU 菜单序（…task → template → config → log）一致。
-	{"menu-ign-delivery", "集群交付配置", "menu-ign-config", "ign:FUNC-46", "MENU", "/ign/config", "Settings", 15},
-	// 入口门禁取页面主数据接口 FUNC-25（三页签四岗位共有的最小公共面），不取只覆盖单个页签的 FUNC-28。
-	{"menu-ign-delivery", "日志与对账", "menu-ign-log", "ign:FUNC-25", "MENU", "/ign/log", "FileText", 16},
-	// L1 运行观测(mu menu-l1-02)
-	{"", "运行观测", "menu-ign-obs", "", "DIRECTORY", "", "Audit", 20},
-	{"menu-ign-obs", "运行观测", "menu-ign-ops", "ign:FUNC-29", "MENU", "/ign/ops", "Dashboard", 21},
-	// L1 审批中心(FLOW-PROC-APP-01 待办入口)
+	{"", "集群交付", "menu-ign-cluster", "ign:FUNC-52", "MENU", "/ign/cluster", "DeploymentUnit", 10},
+	{"", "交付资产", "menu-ign-version", "ign:FUNC-06", "MENU", "/ign/version", "Appstore", 11},
+	{"", "执行位", "menu-ign-executor", "ign:FUNC-17", "MENU", "/ign/executor", "Cluster", 13},
+	{"", "交付任务", "menu-ign-task", "ign:FUNC-25", "MENU", "/ign/task", "Thunderbolt", 15},
+	{"", "运行观测", "menu-ign-ops", "ign:FUNC-29", "MENU", "/ign/ops", "Dashboard", 21},
+	// 审批中心(FLOW-PROC-APP-01 待办入口)
 	{"", "审批中心", "menu-workbench", "", "DIRECTORY", "", "Audit", 30},
 	{"menu-workbench", "我的待办", "menu-workbench-todo", "", "MENU", "/workbench/todo", "Inbox", 31},
 	{"menu-workbench", "我的已办", "menu-workbench-done", "", "MENU", "/workbench/done", "CheckSquare", 32},
@@ -201,6 +200,17 @@ var seedResources = []struct {
 	{"menu-system", "权限管理", "menu-system-permission", "system:manage", "MENU", "/admin/system/permissions", "KeySquare", 43},
 	{"menu-system", "资源管理", "menu-system-resource", "system:manage", "MENU", "/admin/system/resources", "Menu", 44},
 }
+
+// menusV15Kept v1.5 保留在侧栏的本域叶 code（与 seedResources 的 MENU 行同源）。
+var menusV15Kept = []string{"menu-ign-cluster", "menu-ign-version", "menu-ign-executor", "menu-ign-task", "menu-ign-ops"}
+
+// menusV15Retired 退出侧栏的叶 code：MU retiredMenus 五行（载体置换为宿主屏页签，屏与元素表
+// 一字不动）。落库口径 = 置不可见、非物理删除——旧深链兼容一版期间地址仍需在库里可追溯。
+var menusV15Retired = []string{"menu-ign-image", "menu-ign-template", "menu-ign-tls", "menu-ign-log", "menu-ign-config"}
+
+// menusV15Dirs 撤销的一级分组节点（MU retiredGroups 的 menu-l1-01 / menu-l1-02，库侧 code 为
+// 这两条）：其子叶全部升到一级或退出侧栏后，按「已无可见 MENU 子项」隐去。
+var menusV15Dirs = []string{"menu-ign-delivery", "menu-ign-obs"}
 
 var seedUsers = []struct{ Username, Password, RealName, RoleCode string }{
 	{"admin", "admin123", "管理员", "admin"},
@@ -511,20 +521,12 @@ func ensureFlowDefinitions() error {
 }
 
 // backfillIgnSeed 存量库幂等回填（权限矩阵已由 syncM5Authorization 在两条路径上统一入库，
-// 这里只剩本域特有的:菜单入口口径纠正、运行参数缺省、LOCAL 执行机与门面服务账号）。
+// 这里只剩本域特有的:v1.5 菜单收敛、运行参数缺省、LOCAL 执行机与门面服务账号）。
 func backfillIgnSeed() error {
-	// 菜单入口口径纠正：旧种子把 /ign/log 挂在 FUNC-28（三页签之一的权限），交付管理员与只读岗位
-	// 有数据权限却无侧栏入口；只纠正"仍是旧口径"的行，运维自定义过的一律不动。
-	if _, err := qExec(`UPDATE sys_resource SET permission_code = ? WHERE code = ? AND permission_code = ?`,
-		"ign:FUNC-25", "menu-ign-log", "ign:FUNC-28"); err != nil {
+	// v1.5 菜单收敛（存量库幂等，见 convergeMenusV15）：空库首建走 seedResources 的新形态，
+	// 存量库的「两目录 + 九叶」不会自己长成新形状，在这里收敛一次。
+	if err := convergeMenusV15(); err != nil {
 		return err
-	}
-	// v1.3 新屏菜单挂口（MU menu-ign-template「参数面模板」/ menu-ign-config「集群交付配置」）：
-	// 存量库只在 code 缺失时补插一条，已存在（含运维改过）不动。
-	for _, menuCode := range []string{"menu-ign-template", "menu-ign-config"} {
-		if err := backfillV13Menu(menuCode); err != nil {
-			return err
-		}
 	}
 	for _, c := range defaultIgnConfigs() {
 		if err := seedIgnConfigIfAbsent(store.DB, c.Key, c.Value, c.Desc, 1); err != nil {
@@ -537,8 +539,79 @@ func backfillIgnSeed() error {
 	return EnsureFacadeServiceUser()
 }
 
-// backfillV13Menu 按 seedResources 登记口径补插一条缺失菜单；父目录不在（被删/改名）时不强造树。
-func backfillV13Menu(code string) error {
+// convergeMenusV15 v1.5 菜单收敛（存量库幂等，MU menuNote / Q-129 · Q-133 · Q-134）：把重组前的
+// 「两个一级分组 + 九个二级叶」收成「一级五叶」，动作只有三类，且都不物理删除、都不碰运维自定义：
+//  1. 退出侧栏的五叶（menusV15Retired）⇒ status 置 0。MU 的口径是"置不可见而非物理删除"——
+//     五条旧路由兼容一版（routeRetirements）期间地址仍要在库里可追溯，页签内容由宿主屏承载。
+//  2. 五保留叶（menusV15Kept）⇒ 缺行按 seedResources 补插（新增的集群交付叶就走这条腿）；
+//     名称跟 MU 走（版本目录→交付资产、执行机→执行位、任务桥接→交付任务）；挂载位升到一级，
+//     但**仅当其当前父行是种子分组目录时**才动——运维把叶挪到别的分组是它的自定义。
+//  3. 种子分组目录 ⇒ 只有当它已没有任何可见 MENU 子项时才置不可见（运维在同目录下另挂了
+//     自定义叶则保留）。
+func convergeMenusV15() error {
+	for _, code := range menusV15Retired {
+		if _, err := qExec(`UPDATE sys_resource SET status = 0 WHERE code = ? AND type = 'MENU' AND status <> 0`, code); err != nil {
+			return err
+		}
+	}
+	for _, code := range menusV15Kept {
+		if err := backfillIgnMenu(code); err != nil {
+			return err
+		}
+		var wantName string
+		for _, r := range seedResources {
+			if r.Code == code {
+				wantName = r.Name
+			}
+		}
+		row, err := qOne(`SELECT id, name, parent_id FROM sys_resource WHERE code = ?`, code)
+		if err != nil || row == nil {
+			return err
+		}
+		if wantName != "" && Str(row["name"]) != wantName {
+			if _, err := qExec(`UPDATE sys_resource SET name = ? WHERE id = ?`, wantName, toInt(row["id"])); err != nil {
+				return err
+			}
+		}
+		pid := toInt(row["parent_id"])
+		if pid == 0 {
+			continue
+		}
+		dir, err := qOne(`SELECT code FROM sys_resource WHERE id = ?`, pid)
+		if err != nil {
+			return err
+		}
+		if dir == nil || !slices.Contains(menusV15Dirs, Str(dir["code"])) {
+			continue
+		}
+		if _, err := qExec(`UPDATE sys_resource SET parent_id = 0 WHERE id = ?`, toInt(row["id"])); err != nil {
+			return err
+		}
+	}
+	for _, code := range menusV15Dirs {
+		dir, err := qOne(`SELECT id FROM sys_resource WHERE code = ? AND type = 'DIRECTORY'`, code)
+		if err != nil || dir == nil {
+			return err
+		}
+		n, err := qCount(`SELECT COUNT(*) FROM sys_resource WHERE parent_id = ? AND type = 'MENU' AND status = 1`, toInt(dir["id"]))
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			continue
+		}
+		if _, err := qExec(`UPDATE sys_resource SET status = 0 WHERE id = ? AND status <> 0`, toInt(dir["id"])); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// backfillIgnMenu 按 seedResources 登记口径补插一条缺失菜单（存量库幂等回填）。
+// 只在 code 不存在时插入；已存在（含运维改过名称/权限/次序）一律不动。一级叶（Parent 为空）
+// 直接挂 parent_id=0；需要父目录的叶若父目录不在（被删或改名）则不强造菜单树——树形结构归
+// 资源管理屏管，种子不越权补父节点。
+func backfillIgnMenu(code string) error {
 	exists, err := qOne(`SELECT id FROM sys_resource WHERE code = ?`, code)
 	if err != nil || exists != nil {
 		return err
@@ -547,13 +620,17 @@ func backfillV13Menu(code string) error {
 		if r.Code != code {
 			continue
 		}
-		parent, err := qOne(`SELECT id FROM sys_resource WHERE code = ?`, r.Parent)
-		if err != nil || parent == nil {
-			return err
+		parentID := int64(0)
+		if r.Parent != "" {
+			parent, err := qOne(`SELECT id FROM sys_resource WHERE code = ?`, r.Parent)
+			if err != nil || parent == nil {
+				return err
+			}
+			parentID = toInt(parent["id"])
 		}
 		_, err = qExec(`INSERT INTO sys_resource (parent_id, name, code, permission_code, type, path, component, icon, sort_order, status)
 			VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 1)`,
-			toInt(parent["id"]), r.Name, r.Code, r.PermCode, r.Type, r.Path, r.Icon, r.Sort)
+			parentID, r.Name, r.Code, r.PermCode, r.Type, r.Path, r.Icon, r.Sort)
 		return err
 	}
 	return nil

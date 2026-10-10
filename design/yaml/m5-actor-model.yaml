@@ -1,5 +1,5 @@
 model_type: ACTOR
-version: '1.3'
+version: '1.5'
 domain: 交付执行域
 actors:
 - actorId: ACTOR-IGN-ROLE-01
@@ -70,6 +70,8 @@ roles:
   - PERM-FUNC-47
   - PERM-FUNC-48
   - PERM-FUNC-49
+  # v1.5：集群交付索引（导航入口，普通查询档，四档人工身份全开）
+  - PERM-FUNC-52
 - roleId: IGN-ROLE-02
   name: 平台运维管理员
   permissions:
@@ -95,6 +97,8 @@ roles:
   - PERM-FUNC-43
   - PERM-FUNC-45
   - PERM-FUNC-46
+  # v1.5：集群交付索引（只清单不内容，权限档位不升）
+  - PERM-FUNC-52
 - roleId: IGN-ROLE-03
   name: 交付审计员
   permissions:
@@ -113,6 +117,8 @@ roles:
   # v1.3：只给模板编目查询；「集群交付配置」两问（FUNC-45 / 46）对其关闭 —— 逐字段视图即完整配置答案（矩阵一第三处最小可见）
   - PERM-FUNC-38
   - PERM-FUNC-39
+  # v1.5：集群交付索引（审计员可见标识清单；逐字段配置视图仍对其关闭，档位不变）
+  - PERM-FUNC-52
 - roleId: IGN-ROLE-04
   name: 交付只读用户
   permissions:
@@ -132,6 +138,9 @@ roles:
   - PERM-FUNC-39
   - PERM-FUNC-45
   - PERM-FUNC-46
+  # v1.5：集群交付索引 —— 8.3.2 ③ 的判据：已能读逐行日志原文与逐笔纠偏台账的身份，
+  # 不存在「标识清单」这一新增泄露面；本屏动作列可见性不加分辨，进台后按各页签权限码裁切
+  - PERM-FUNC-52
 - roleId: IGN-ROLE-05
   name: 执行机代理
   # v1.1：本角色即矩阵二「05 = 非人工身份」那一格——调用方为执行机代理与下游中心服务身份；
@@ -145,6 +154,8 @@ roles:
   - PERM-FUNC-36
   # v1.3：跨中心交付配置只读通道（服务身份只出、不入 —— 写入口仍在本域「集群交付配置」屏）
   - PERM-FUNC-50
+  # v1.4：跨中心交付执行日志只读通道（同一服务身份格；独立发牌，回执可见不等于原文可见）
+  - PERM-FUNC-51
 
 permissions:
 - permissionId: PERM-FUNC-01
@@ -352,3 +363,13 @@ permissions:
   targetRef: FUNC-50
   dataScope: ALL
   note: 跨中心只读通道：非人工身份（矩阵二「05」那一格，facade token + ign:FUNC-50），与 PERM-FUNC-08 / 19 / 35 同一登记口径；只出不入
+- permissionId: PERM-FUNC-51
+  targetType: BEHAVIOR
+  targetRef: FUNC-51
+  dataScope: ALL
+  note: 跨中心执行日志只读通道：独立发牌，不与 PERM-FUNC-35（回执）合并 —— 回执可见不等于日志原文可见；同一非人工身份格（facade token + ign:FUNC-51），逐次留痕
+- permissionId: PERM-FUNC-52
+  targetType: BEHAVIOR
+  targetRef: FUNC-52
+  dataScope: ALL
+  note: v1.5 本域第一条「为界面而发」的查询码（导航入口）：普通查询档，随「查询类默认放开」按角色绑码，**不独立发牌**（不进 8.6 第 19 项两处之列 —— 那两处的判据是原文流出，本表给的是标识与计数）；IGN-ROLE-01~04 全绑，05 为机器身份无界面故不绑；落库 sys_permission.code = ign:FUNC-52；纯读无写腿，不落审计（口径 8 只约束原文类视图）

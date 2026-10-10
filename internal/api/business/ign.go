@@ -433,8 +433,9 @@ func IgnTaskGet(c *gin.Context) {
 func IgnReconcileList(c *gin.Context) {
 	page, size := common.PageOf(c)
 	p, err := service.ListReconcileLogs(page, size, map[string]any{
-		"event_type": c.Query("event_type"),
-		"keyword":    c.Query("keyword"),
+		"event_type":  c.Query("event_type"),
+		"keyword":     c.Query("keyword"),
+		"cluster_ref": c.Query("cluster_ref"),
 	})
 	if err != nil {
 		common.FailJSON(c, err)
@@ -531,4 +532,23 @@ func IgnParamsSave(c *gin.Context) {
 		return
 	}
 	common.OKJSON(c, gin.H{"saved": len(mapped)}, "运行参数已保存（REF-* 缺省口径可覆盖,热生效）")
+}
+
+// ---------- 本域交付集群索引(FUNC-52;v1.5) ----------
+
+// IgnClusterIndexList GET /api/v1/ign/cluster/index (FUNC-52;REP-19)
+// 键集是两个既有对象 cluster_ref 的并集去重、查询期现算（零 DDL 零缓存）；
+// cluster_ref 参数供集群交付台的徽章条按标识精确取一行。
+func IgnClusterIndexList(c *gin.Context) {
+	page, size := common.PageOf(c)
+	out, err := service.ListDeliveryClusterIndex(page, size, map[string]any{
+		"keyword":     c.Query("keyword"),
+		"pending":     c.Query("pending"),
+		"cluster_ref": c.Query("cluster_ref"),
+	})
+	if err != nil {
+		common.FailJSON(c, err)
+		return
+	}
+	common.OKJSON(c, out, "")
 }

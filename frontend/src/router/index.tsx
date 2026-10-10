@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { Spin } from 'antd'
 import { useDispatch, useSelector } from 'react-redux'
 import { authApi } from '../api/auth'
@@ -19,14 +19,10 @@ import NoticeManage from '../admin/pages/NoticeManage'
 import ErrCodes from '../admin/pages/ErrCodes'
 import ServerMonitor from '../admin/pages/ServerMonitor'
 import { isAdminPermissions } from '../admin/access'
-import IgnVersionPage from '../pages/ign/IgnVersionPage'
-import IgnImagePage from '../pages/ign/IgnImagePage'
+import IgnClusterIndexPage from '../pages/ign/IgnClusterIndexPage'
+import IgnClusterConsolePage from '../pages/ign/IgnClusterConsolePage'
+import { IgnExecutorHost, IgnTaskHost, IgnVersionHost } from '../pages/ign/IgnHostTabs'
 import IgnExecutorPage from '../pages/ign/IgnExecutorPage'
-import IgnTlsPage from '../pages/ign/IgnTlsPage'
-import IgnTaskPage from '../pages/ign/IgnTaskPage'
-import IgnParamTemplatePage from '../pages/ign/IgnParamTemplatePage'
-import IgnClusterConfigPage from '../pages/ign/IgnClusterConfigPage'
-import IgnLogPage from '../pages/ign/IgnLogPage'
 import IgnOpsPage from '../pages/ign/IgnOpsPage'
 import Todo from '../pages/workbench/Todo'
 import Done from '../pages/workbench/Done'
@@ -45,7 +41,7 @@ import ResourceManage from '../pages/system/ResourceManage'
 
 /** 登录成功 / 恢复会话后的首页:一律进用户工作台(管理员经工作台 Header「管理控制台」入口或直接输 /admin 进控制台) */
 export function resolveHomePath(_permissions?: string[] | undefined | null): string {
-  return '/ign/version'
+  return '/ign/cluster'
 }
 
 /** 有 token 无 user 时先调 /auth/info 恢复登录态,失败清 token 回 /login */
@@ -89,13 +85,38 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 /** 根路径:一律重定向到用户工作台 */
 function RootRedirect() {
-  return <Navigate to="/ign/version" replace />
+  return <Navigate to="/ign/cluster" replace />
 }
 
 /** 旧设计器路径重定向:需要在运行时读取 :id 参数(Navigate.to 不会做参数插值) */
 function LegacyDesignerRedirect() {
   const { id } = useParams()
   return <Navigate to={`/admin/flow/designer/${id ?? ''}`} replace />
+}
+
+/** v1.5 旧路由重定向：把书签里的"菜单叶 = 一个屏"翻译成"宿主页签 = 同一个屏"（MU routeRetirements）*/
+function useLegacyQuery() {
+  return new URLSearchParams(useLocation().search)
+}
+
+/** /ign/log → /ign/task?tab=log；屏内三子签的深链值域由 ?tab= 迁到 ?log_tab=（9.6 载体注记），其余参数原样带走 */
+function LegacyLogRedirect() {
+  const q = useLegacyQuery()
+  const sub = q.get('tab') || ''
+  q.delete('tab')
+  if (['task', 'reconcile', 'facade'].includes(sub)) q.set('log_tab', sub)
+  q.set('tab', 'log')
+  return <Navigate to={`/ign/task?${q.toString()}`} replace />
+}
+
+/** /ign/config → 集群交付台的「配置」页签；无集群标识时退到索引屏（配置屏只有一台一轴的读法，跨集群无从选起） */
+function LegacyConfigRedirect() {
+  const q = useLegacyQuery()
+  const ref = q.get('cluster_ref') || ''
+  q.delete('cluster_ref')
+  if (!ref) return <Navigate to="/ign/cluster" replace />
+  q.set('tab', 'config')
+  return <Navigate to={`/ign/console/${encodeURIComponent(ref)}?${q.toString()}`} replace />
 }
 
 /** 管理控制台守卫:无管理权限 → 玻璃风 403 */
@@ -120,7 +141,7 @@ export default function AppRoutes() {
         }
       />
 
-      {/* 用户工作台(玻璃风):/ign/* 七屏、/workbench/* */}
+      {/* 用户工作台(玻璃风):/ign/* 五叶 + 集群交付台深链、/workbench/* */}
       <Route
         path="/"
         element={
@@ -129,15 +150,18 @@ export default function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route path="ign/version" element={<IgnVersionPage />} />
-        <Route path="ign/image" element={<IgnImagePage />} />
-        <Route path="ign/executor" element={<IgnExecutorPage />} />
-        <Route path="ign/tls" element={<IgnTlsPage />} />
-        <Route path="ign/task" element={<IgnTaskPage />} />
-        <Route path="ign/template" element={<IgnParamTemplatePage />} />
-        <Route path="ign/config" element={<IgnClusterConfigPage />} />
-        <Route path="ign/log" element={<IgnLogPage />} />
+        <Route path="ign/cluster" element={<IgnClusterIndexPage />} />
+        <Route path="ign/console/:clusterRef" element={<IgnClusterConsolePage />} />
+        <Route path="ign/version" element={<IgnVersionHost />} />
+        <Route path="ign/executor" element={<IgnExecutorHost />} />
+        <Route path="ign/task" element={<IgnTaskHost />} />
         <Route path="ign/ops" element={<IgnOpsPage />} />
+        {/* v1.5 载体置换：五条旧叶路由重定向到落点页签，兼容一版（收藏夹 / 上游跳转不得变 404） */}
+        <Route path="ign/image" element={<Navigate to="/ign/version?tab=image" replace />} />
+        <Route path="ign/template" element={<Navigate to="/ign/version?tab=template" replace />} />
+        <Route path="ign/tls" element={<Navigate to="/ign/executor?tab=tls" replace />} />
+        <Route path="ign/log" element={<LegacyLogRedirect />} />
+        <Route path="ign/config" element={<LegacyConfigRedirect />} />
         <Route path="workbench/todo" element={<Todo />} />
         <Route path="workbench/done" element={<Done />} />
         <Route path="workbench/requested" element={<Requested />} />

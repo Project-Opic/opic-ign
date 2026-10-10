@@ -1,6 +1,9 @@
 // MU frmIgnTask 交付管理 · 任务提交与台账(AGG-IGN-06;MASTER_DETAIL_FORM)
 // 上半提交表单(FUNC-23)/ 下半台账(FUNC-25,REP-09)/ 详情与只读日志子表(FUNC-26/27,REP-11)。
-// v1.1 增补：步骤编码条件必填(INV-36)、来源两列只读反查(FUNC-37/INV-34)、
+// v1.1 增补：步骤编码条件必填(INV-36)、来源两列只读反查(FUNC-37/INV-34)。
+// v1.5 侧栏收口：本屏仍是一级叶，同时是集群交付台的「任务」页签载体（9.11.2）——
+// 带 clusterRef 入参即台内挂点：关联集群由上下文给定（提交表单预填只读、台账不出集群筛选器），
+// 屏本体与查询面不改一份，只是同一报表的第二个呈现入口。
 //
 // 动作下拉只列「交付动作层」——白名单枚举 ≠ 可提交集合(需求 7.3 三层可达面)：
 // 内部前置层 ezctl.new 由 B-AUTO-15 使用，平台运维层 scripts.* 由 B-AUTO-02/06~08 发起，
@@ -36,7 +39,14 @@ const FALLBACK_DELIVERY_ACTIONS = [
 
 const FALLBACK_TASK_STATUS = ['RUNNING', 'CANCELLING', 'COMPLETED', 'FAILED', 'CANCELLED', 'LOST']
 
-export default function IgnTaskPage() {
+export default function IgnTaskPage({
+  clusterRef = '',
+  onChanged,
+}: {
+  clusterRef?: string
+  /** 台内挂点：派发 / 撤销等状态变更后回调（9.11.7 ①③：徽章条重取、配置页签落盘列刷新） */
+  onChanged?: () => void
+}) {
   const hasPerm = usePermission()
   const nav = useNavigate()
   const [filterForm] = Form.useForm<{ action?: string; task_status?: string; cluster_ref?: string; keyword?: string }>()
@@ -101,7 +111,8 @@ export default function IgnTaskPage() {
       setLoading(true)
       try {
         const v = filterForm.getFieldsValue()
-        const res = await ignApi.listTasks({ page: p, size: s, ...v })
+        // 9.11.2：集群台挂点下 clusterRef 由上下文注入为只读过滤条件，不是屏上那个可改的筛选器
+        const res = await ignApi.listTasks({ page: p, size: s, ...v, ...(clusterRef ? { cluster_ref: clusterRef } : {}) })
         setData(res.list || [])
         setTotal(res.total || 0)
       } catch {
@@ -110,7 +121,7 @@ export default function IgnTaskPage() {
         setLoading(false)
       }
     },
-    [page, size, filterForm],
+    [page, size, filterForm, clusterRef],
   )
 
   useEffect(() => {
@@ -141,6 +152,11 @@ export default function IgnTaskPage() {
       form.setFieldValue('step_code', undefined)
     }
   }, [action, form])
+
+  // 台内挂点：关联集群由上下文给定（只读、不可改），提交表单不再要求人再填一遍
+  useEffect(() => {
+    if (clusterRef) form.setFieldValue('cluster_ref', clusterRef)
+  }, [clusterRef, form])
 
   const loadLogs = useCallback(async (taskNo: string, sinceSeq?: number) => {
     setLogLoading(true)
@@ -177,7 +193,10 @@ export default function IgnTaskPage() {
       })
       message.success(String(res?.dispatch_note || '任务已提交（R-05 计数已递增）'))
       form.resetFields()
+      if (clusterRef) form.setFieldValue('cluster_ref', clusterRef)
       load()
+      // 9.11.7 ③：台内派发成功 ⇒ 徽章条"最近一次交付 / 在跑任务数"重取
+      onChanged?.()
     } catch {
       // 拦截器已提示
     } finally {
@@ -190,6 +209,7 @@ export default function IgnTaskPage() {
       await ignApi.cancelTask(r.task_no)
       message.success('撤销请求已登记（在途任务由执行事实收口；无在途协程则就地收口为 CANCELLED）')
       load()
+      onChanged?.()
     } catch {
       // 拦截器已提示
     }
@@ -244,7 +264,15 @@ export default function IgnTaskPage() {
             type="link"
             size="small"
             style={{ padding: 0, height: 'auto' }}
-            onClick={() => nav(`/ign/log?tab=facade&source_task_no=${encodeURIComponent(String(r.source_task_no))}`)}
+            // el13：反查落点是 frmIgnLog 的「门面受理台账」子签。v1.5 起本屏两处挂点（横看叶 / 台内「任务」签），
+            // 跳转保持在当前挂点上：台内 ⇒ 台内日志签（clusterRef 上下文不丢），横看 ⇒ 交付任务叶的日志签。
+            onClick={() =>
+              nav(
+                `${clusterRef ? `/ign/console/${encodeURIComponent(clusterRef)}` : '/ign/task'}?tab=log&log_tab=facade&source_task_no=${encodeURIComponent(
+                  String(r.source_task_no),
+                )}`,
+              )
+            }
           >
             门面受理 · {r.source_task_no} / 第 {r.source_step_index ?? '-'} 步
           </Button>
@@ -365,7 +393,8 @@ export default function IgnTaskPage() {
             )}
             <Col span={8}>
               <Form.Item name="cluster_ref" label="关联集群（跨域引用只存标识）" rules={[{ required: true, message: '必填（INV-33）' }]}>
-                <Input placeholder="CLUSTER-xxx / 集群标识" />
+                {/* 台内挂点由上下文给定，人不必也不该再填一遍（9.11.3：宿主屏只注入 clusterRef，不新增写口） */}
+                <Input placeholder="CLUSTER-xxx / 集群标识" readOnly={!!clusterRef} />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -425,9 +454,12 @@ export default function IgnTaskPage() {
         <Form.Item name="task_status" label="状态">
           <Select allowClear style={{ width: 150 }} options={statusOptions} />
         </Form.Item>
-        <Form.Item name="cluster_ref" label="集群">
-          <Input allowClear placeholder="集群标识" onPressEnter={() => load()} style={{ width: 150 }} />
-        </Form.Item>
+        {/* 台内挂点的集群由上下文给定，不再出一份同义筛选器（9.11.1：挂点只换过滤上下文） */}
+        {!clusterRef && (
+          <Form.Item name="cluster_ref" label="集群">
+            <Input allowClear placeholder="集群标识" onPressEnter={() => load()} style={{ width: 150 }} />
+          </Form.Item>
+        )}
         <Form.Item name="keyword" label="关键字">
           <Input allowClear placeholder="任务编号 / 提交人" onPressEnter={() => load()} style={{ width: 160 }} />
         </Form.Item>

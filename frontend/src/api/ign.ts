@@ -473,6 +473,34 @@ export interface ClusterConfigValidateResult {
   notice: string
 }
 
+/** REP-19 本域交付集群索引行（FUNC-52；一行一个本域服务过的集群标识 + 四个即时派生摘要列。
+ *  上游集群的名称 / 生命周期状态 / 健康一律不在返回里，界面也无从抄起（INV-33）） */
+export interface ClusterIndexRow {
+  cluster_ref: string
+  task_count: number
+  running_task_count: number
+  pending_deviation_count: number
+  effective_override_count: number
+  rolled_back_override_count: number
+  last_task_no: string | null
+  last_task_status: string | null
+  last_verdict_source: string | null
+  last_started_at: string | null
+  last_ended_at: string | null
+}
+
+/** 索引页响应：分页四件套之外，统计时点 / 口径注 / 范围注必现（口径 11：摘要截至此刻，非实时健康） */
+export interface ClusterIndexResult {
+  list: ClusterIndexRow[]
+  total: number
+  page: number
+  size: number
+  stats_at: string
+  caliber_note: string
+  scope_note: string
+  empty_note?: string
+}
+
 /* ---------- API ---------- */
 
 /** 参数面字段目录项（GET /api/meta/ign-param-face；后端唯一实现在面定义表，界面不再自存副本） */
@@ -588,7 +616,8 @@ export const ignApi = {
   taskLogs(taskNo: string, params?: { since_seq?: number; page?: number; size?: number }) {
     return http.get<TaskLogPage>(`/api/v1/ign/task/${taskNo}/logs`, params)
   },
-  listReconcile(params: { page: number; size: number; event_type?: string; keyword?: string }) {
+  /** REP-12 纠偏台账：cluster_ref 为台内挂点的本集群 scope（9.6 载体注记，由 exec_task 现算派生） */
+  listReconcile(params: { page: number; size: number; event_type?: string; keyword?: string; cluster_ref?: string }) {
     return http.get<PageResult<PortableRow>>('/api/v1/ign/reconcile', params)
   },
 
@@ -662,6 +691,18 @@ export const ignApi = {
   },
   deleteParamTemplate(id: number, reason: string) {
     return http.del<IgnParamTemplate>(`/api/v1/ign/param-template/${id}`, { reason })
+  },
+
+  /* 本域交付集群索引(FUNC-52;REP-19。集群标识并集去重的即时派生键集,零 DDL、不落表不缓存;
+     「集群交付」叶与集群台徽章条的取数口,DEF-11 订正后配置屏的集群下拉也走这里) */
+  listDeliveryClusters(params: {
+    page?: number
+    size?: number
+    keyword?: string
+    pending?: string
+    cluster_ref?: string
+  }) {
+    return http.get<ClusterIndexResult>('/api/v1/ign/cluster/index', params)
   },
 
   /* 集群交付配置(FUNC-45~49;MU frmIgnConfig。覆写/预检/回落的请求体口径 = service 层字段:

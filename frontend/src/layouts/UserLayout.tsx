@@ -122,6 +122,10 @@ function filterWorkbenchMenus(menus: MenuItem[]): MenuItem[] {
   return out
 }
 
+/** v1.5:集群交付台frmIgnClusterConsole 没有菜单叶(由索引行操作深链进入),侧栏高亮与页签名都挂在「集群交付」叶上 */
+const CONSOLE_PREFIX = '/ign/console/'
+const CONSOLE_LEAF_PATH = '/ign/cluster'
+
 function buildMenuItems(menus: MenuItem[]): AntdMenuItem[] {
   return menus.map((m) => {
     const isDir = m.type === 'DIRECTORY' || (!m.type && !!m.children?.length)
@@ -189,11 +193,16 @@ function WorkbenchShell() {
   const pathLabel = (path: string): string => {
     if (labelMap.has(path)) return labelMap.get(path)!
     if (path.startsWith('/flow/designer/')) return '流程设计'
+    if (path.startsWith(CONSOLE_PREFIX)) return `集群交付台 · ${decodeURIComponent(path.slice(CONSOLE_PREFIX.length))}`
     return path
   }
 
-  // 多页签:记录访问过的路由
+  // 多页签:记录访问过的路由。只给"有名字的屏"开页签——v1.5 旧叶路由重定向会在同一跳里
+  // 先落在旧路径上，按旧路径开页签会留下一条无人认领的裸路径页签。
   useEffect(() => {
+    const known = labelMap.has(location.pathname) || location.pathname.startsWith(CONSOLE_PREFIX)
+      || location.pathname.startsWith('/flow/designer/')
+    if (!known) return
     const label = pathLabel(location.pathname)
     setTabs((prev) => (prev.some((t) => t.key === location.pathname) ? prev : [...prev, { key: location.pathname, label }]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -205,7 +214,7 @@ function WorkbenchShell() {
     setTabs(next)
     if (location.pathname === key) {
       const target = next[idx] || next[idx - 1]
-      navigate(target ? target.key : '/ign/version')
+      navigate(target ? target.key : '/ign/cluster')
     }
   }
 
@@ -256,10 +265,12 @@ function WorkbenchShell() {
 
   const menuItems = useMemo(() => buildMenuItems(filterWorkbenchMenus(menus)), [menus])
 
-  // 当前选中菜单(设计器页面高亮流程定义)
+  // 当前选中菜单(设计器页面高亮流程定义;集群交付台高亮「集群交付」叶)
   const selectedKey = location.pathname.startsWith('/flow/designer/')
     ? '/flow/definitions'
-    : location.pathname
+    : location.pathname.startsWith(CONSOLE_PREFIX)
+      ? CONSOLE_LEAF_PATH
+      : location.pathname
 
   const toggleChat = () => setChatCollapsed((v) => !v)
 

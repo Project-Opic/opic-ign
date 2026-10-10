@@ -3,6 +3,8 @@
 #   用法: ruby tools/check_model_gate.rb <models_dir> [新屏 screenId,逗号分隔]
 #   第 2 个参数是"本轮新增的屏"—— 它们的 dataBinding 首段必须是 M1 alias（硬性 FAIL）；
 #   未列出的屏沿用历史字段名风格，只出 WARN 不误伤既有交付链。
+#   v1.5 起菜单核对支持三种登记位：一级/二级菜单叶（含顶层 screenRef）、retiredMenus（退出侧栏但仍在页签登记）、
+#   hostedIn（被页签承载的屏，反查宿主屏做到不动点；标量或列表，列表即"一屏两宿主"）。
 require 'yaml'
 
 dir = ARGV[0]
@@ -53,11 +55,33 @@ missing_perm = mu_acts.flat_map { |_, a| a['permissionRef'] || [] }.uniq.reject 
 fails << "MU permissionRef missing in M5: #{missing_perm.join(',')}" unless missing_perm.empty?
 screen_ids = mu['screens'].map { |s| s['screenId'] }
 menu_refs = []
-mu['application']['menus'].each do |m|
-  (m['children'] || []).each { |c| menu_refs << c['screenRef'] }
+collect_refs = lambda do |list|
+  list.each do |m|
+    menu_refs << m['screenRef'] if m['screenRef']
+    collect_refs.call(m['children']) if m['children']
+  end
 end
+collect_refs.call(mu['application']['menus'])
+# v1.5 载体置换：退出侧栏的菜单叶（retiredMenus）与页签承载屏（hostedIn）都是合法登记位，
+# 但宿主屏自身无菜单叶 —— 由被承载屏的 hostedIn 反查，做到不动点（宿主屏可挂宿主屏）。
+# hostedIn 允许标量或列表（frmIgnLog 是本域唯一"一屏两宿主"）。
+(mu['application']['retiredMenus'] || []).each { |m| menu_refs << m['screenRef'] if m['screenRef'] }
+loop do
+  add = []
+  mu['screens'].each do |s|
+    next unless s['hostedIn'] && menu_refs.include?(s['screenId'])
+    add.concat(Array(s['hostedIn']))
+  end
+  break if (add - menu_refs).empty?
+  menu_refs.concat(add)
+end
+menu_refs.uniq!
 bad_menu = menu_refs.reject { |s| screen_ids.include?(s) }
 fails << "menu screenRef missing: #{bad_menu.join(',')}" unless bad_menu.empty?
+unhosted = mu['screens'].select { |s| Array(s['hostedIn']).any? { |h| !screen_ids.include?(h) } }
+fails << "MU hostedIn missing screen: #{unhosted.map { |s| "#{s['screenId']}=#{Array(s['hostedIn']).join('+')}" }.join(',')}" unless unhosted.empty?
+notab = mu['screens'].select { |s| s['hostedIn'] && (s['tabName'].nil? || s['tabName'].to_s.empty?) }
+fails << "MU hosted screen without tabName: #{notab.map { |s| s['screenId'] }.join(',')}" unless notab.empty?
 orphan = screen_ids.reject { |s| menu_refs.include?(s) || s.start_with?('frmPublic') }
 puts "MU: screens=#{screen_ids.size} actions=#{mu_acts.size} menuLeafRefs=#{menu_refs.size} unmenued=#{orphan.join(',')}"
 bad_ds = mu['screens'].flat_map { |s| (s['elements'] || []).map { |e| [s['screenId'], e['id'], e['dataSource']] } }

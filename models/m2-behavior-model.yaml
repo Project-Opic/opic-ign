@@ -1,5 +1,5 @@
 model_type: BEHAVIOR
-version: '1.3'
+version: '1.5'
 domain: 交付执行域
 behaviors:
 - id: FUNC-01
@@ -1090,6 +1090,52 @@ behaviors:
   syncTriggers: []
   queryReportRef: null
   reportException: 第五部分 5.20 ⑤ 登记的服务接口例外：跨中心只读通道是机器对机器的读接口、没有展示面，故不建报表 —— 与 FUNC-35 并列在「无报表的查询功能点」两条之内
+- id: FUNC-51
+  name: 跨中心交付执行日志只读通道
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: SYSTEM
+  preconditions:
+  - 服务身份鉴权（facade token + ign:FUNC-51）；与 FUNC-08 / 19 / 35 / 50 同列「无菜单的服务接口」，挂门面组、不挂登录组
+  - 入参 = 远端任务标识 + 游标 since_seq（缺省 0）+ limit（缺省取 REF-14 上限、超限按上限封顶）；标识未命中回明确的「任务不存在」结论，不以空文本或缓存冒充现状
+  postconditions:
+  - 逐行回吐 seq / direction / log_line / masked / logged_at 与 since_seq / next_seq / cursor / truncated；行文本就是本域写前已掩码的那一份（INV-40），本通道不二次解析、不改写、不留对端副本
+  - 只读、反复调用无副作用：不写本域对象、不产生事件、不改任务状态；每次调用落一条逐次留痕，来源标注区分「本域界面」与「上游代理读」（与 FUNC-50 原文腿同一留痕口径）
+  - 与 FUNC-35 回执的分工要说清：回执给「任务结论 + 增量日志」且不发牌原文可见性，本通道只给日志原文腿且独立发牌 —— 回执可见不等于原文可见，反过来给原文也不等于给回执
+  - 不建报表（机器对机器的读接口、无展示面，与 FUNC-35 / 50 同一登记口径）
+  appliedRules:
+  - R-26
+  - INV-38
+  - INV-40
+  - REF-14
+  requiredPermissions:
+  - PERM-FUNC-51
+  syncTriggers: []
+  queryReportRef: null
+  reportException: 第五部分 5.20 ⑤ 登记的服务接口例外（第三条）：跨中心执行日志只读通道同为机器对机器的读接口、无展示面，故不建报表 —— 「无报表的查询功能点」由两条扩为三条
+- id: FUNC-52
+  name: 本域交付集群索引查询
+  ownerEntity: AGG-IGN-06
+  behaviorType: QUERY
+  triggerType: USER_ACTION
+  preconditions:
+  - 普通查询档发牌（PERM-FUNC-52，查询类默认放开、按角色绑码）：不进「查询类却独立发牌」的两处之列（R-26 的判据是原文流出，本表给的是标识与计数、不是内容）
+  - 无入参即可调用（侧栏「集群交付」叶进入即拉全量）；关键字 / 三个待办筛项都是对本表既有列的过滤，不引入新查询面
+  - 筛选关键字**不做存在性校验** —— 本域不持有集群有效性判据（INV-33），把"查不到"说成"集群不存在"就是越权断言
+  postconditions:
+  - 行集 = ign_task.clusterRef ∪ ign_cluster_config_override.clusterRef 去重（任一侧有记录即入索引；两侧都空 ⇒ 本域不认识该集群）—— 本表列的是「本域服务过的」，不是「存在的」
+  - 四个摘要列全部即时派生自两个既有对象的现有关联列：交付记录数（ExecTask 侧计数，含终态）、最近一次交付（taskNo / finishedAt / 结果，LOST 单列不并入失败）、生效覆写字段数（ClusterConfigOverride 生效态计数）、未决偏差数（LOST 与已发生状态修正的任务计数）；**不建新表、不加列、不建统计缓存**（缓存即制造"列表说 3 条、台内只有 2 条"的两张皮）
+  - 必须回吐统计时点并在界面标注"摘要截至某时刻，进入台内以台内实时数据为准" —— 派生摘要是结论不是现状，本域没有"该集群现在的状态"这个信息
+  - 空态文案是「本域尚未替任何集群执行过交付」，**不得写成「没有集群」**（后者是 O-CLC 的权威事实）
+  - 上游集群的名称 / 生命周期状态 / 健康度一律不呈现、不内嵌卡片，需要即跳转（INV-33；本域没有的数据一个字段都不许摆）
+  - 与 FUNC-46 不构成"同一报表两个入口"：本查询回答「有哪些集群值得进台」（REP-19 清单），FUNC-46 回答「这一个集群每个字段当前取什么值」（REP-17 明细）
+  - 只读、幂等、无写腿：不写本域对象、不产生事件、不改任务状态；反复调用无副作用（本域第 22 个查询功能点，本批唯一新增功能点）
+  appliedRules:
+  - INV-33
+  requiredPermissions:
+  - PERM-FUNC-52
+  syncTriggers: []
+  queryReportRef: REP-19
 - id: B-AUTO-01
   name: 发行包下载执行
   ownerEntity: AGG-IGN-01

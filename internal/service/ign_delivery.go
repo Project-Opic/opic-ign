@@ -317,6 +317,35 @@ func ignAlignPrecondition(clusterRef, action, stepCode, paramTemplateRef, versio
 	return "", nil, nil
 }
 
+// ignReadTaskLogPage FUNC-35 的回执腿与 FUNC-51 的原文腿**共用的读盘**：
+// 同一份 SELECT、同一套截断与游标口径（REF-14 上限 / INV-38 单调游标 / INV-40 写前已掩码）。
+// 两腿各发一张牌，但读盘只此一份 —— v1.4 判据「同一份事实的两个出口不各写一套读盘逻辑」的落点。
+func ignReadTaskLogPage(taskID int64, sinceSeq int64, limit int64) ([]map[string]any, int64, int64, bool, error) {
+	logs, err := qList(`
+		SELECT seq, direction, log_line, masked, logged_at FROM ign_task_log
+		WHERE task_id = ? AND flag = 1 AND seq > ? ORDER BY seq LIMIT ?`,
+		taskID, sinceSeq, limit+1)
+	if err != nil {
+		return nil, sinceSeq, 0, false, err
+	}
+	truncated := int64(len(logs)) > limit
+	if truncated {
+		logs = logs[:limit]
+	}
+	if logs == nil {
+		logs = []map[string]any{}
+	}
+	nextSeq := sinceSeq
+	if len(logs) > 0 {
+		nextSeq = ignToInt(logs[len(logs)-1]["seq"])
+	}
+	cursor, err := qCount(`SELECT COALESCE(MAX(seq), 0) FROM ign_task_log WHERE task_id = ? AND flag = 1`, taskID)
+	if err != nil {
+		return nil, sinceSeq, 0, false, err
+	}
+	return logs, nextSeq, cursor, truncated, nil
+}
+
 // DeliveryReceipt FUNC-35 交付门面 · 回执与增量日志（只读；反复轮询无副作用）。
 // 引用未命中返回明确的"任务不存在"而非空回执（上游据此判登记值与真实位置不符）。
 func DeliveryReceipt(taskNo string, sinceSeq int64) (map[string]any, error) {
@@ -336,25 +365,7 @@ func DeliveryReceipt(taskNo string, sinceSeq int64) (map[string]any, error) {
 	}
 	taskID := toInt(row["id"])
 	limit := ignConfigInt(store.DB, ignCfgReceiptLogBatch, 500) // REF-14
-	logs, err := qList(`
-		SELECT seq, direction, log_line, masked, logged_at FROM ign_task_log
-		WHERE task_id = ? AND flag = 1 AND seq > ? ORDER BY seq LIMIT ?`,
-		taskID, sinceSeq, limit+1)
-	if err != nil {
-		return nil, err
-	}
-	truncated := int64(len(logs)) > limit
-	if truncated {
-		logs = logs[:limit]
-	}
-	if logs == nil {
-		logs = []map[string]any{}
-	}
-	nextSeq := sinceSeq
-	if len(logs) > 0 {
-		nextSeq = ignToInt(logs[len(logs)-1]["seq"])
-	}
-	cursor, err := qCount(`SELECT COALESCE(MAX(seq), 0) FROM ign_task_log WHERE task_id = ? AND flag = 1`, taskID)
+	logs, nextSeq, cursor, truncated, err := ignReadTaskLogPage(taskID, sinceSeq, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -375,6 +386,57 @@ func DeliveryReceipt(taskNo string, sinceSeq int64) (map[string]any, error) {
 		"ended_at":        row["ended_at"],
 	}
 	return out, nil
+}
+
+// ignExecLogOriginFacade FUNC-51 跨中心交付执行日志只读通道的留痕来源标注。
+// 与原文通道(FUNC-50)同一套「来源区分本域人工看 / 上游代理读」口径，各自单列，不复用串。
+const ignExecLogOriginFacade = "上游代理只读(FUNC-51)"
+
+// FacadeDeliveryLog FUNC-51 跨中心交付执行日志只读通道（ezctl/ansible 原文腿）。
+// 与 FUNC-35 回执的分工：回执给「任务结论 + 增量日志」且原文可见性不由它发牌，本通道只出
+// 日志原文腿并独立发牌 —— 回执可见不等于原文可见。反复轮询无副作用；行在写盘前已过 R-16
+// 掩码（INV-40），本通道不再二次脱敏也不提供未脱敏的第二条路径；游标严格单调（INV-38）。
+func FacadeDeliveryLog(taskNo string, sinceSeq int64, limit int, user UserInfo) (map[string]any, error) {
+	taskNo = strings.TrimSpace(taskNo)
+	if taskNo == "" {
+		return nil, Fail(errcode.ErrParam, "远端任务引用必填")
+	}
+	if sinceSeq < 0 {
+		sinceSeq = 0
+	}
+	capN := ignConfigInt(store.DB, ignCfgReceiptLogBatch, 500) // REF-14：与回执共用同一上限口径
+	limitN := int64(limit)
+	if limit <= 0 || limitN > capN {
+		limitN = capN
+	}
+	row, err := qOne(`SELECT id FROM exec_task WHERE task_no = ? AND flag = 1`, taskNo)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		// 拒绝也留痕：上游代理的每次取原文都要能查出「谁在什么时候试图读哪条任务」（R-26 同法）
+		WriteAudit(nil, user.ID, user.Username, "IGN_EXEC_LOG_READ", fmt.Sprintf(
+			"交付执行日志只读通道：任务引用 %q 未命中，已拒绝（来源=%s）", taskNo, ignExecLogOriginFacade))
+		return nil, Fail(errcode.ErrNotFound, "任务不存在：远端任务引用 %q 在本域无登记（登记值与真实位置不符）", taskNo)
+	}
+	taskID := toInt(row["id"])
+	logs, nextSeq, cursor, truncated, err := ignReadTaskLogPage(taskID, sinceSeq, limitN)
+	if err != nil {
+		return nil, err
+	}
+	WriteAudit(nil, user.ID, user.Username, "IGN_EXEC_LOG_READ", fmt.Sprintf(
+		"交付执行日志只读通道：任务 %s 自 seq %d 起回吐 %d 行（截断=%v，游标右界 %d，来源=%s）",
+		taskNo, sinceSeq, len(logs), truncated, cursor, ignExecLogOriginFacade))
+	return map[string]any{
+		"remote_task_ref": taskNo,
+		"lines":           logs,
+		"since_seq":       sinceSeq,
+		"next_seq":        nextSeq,
+		"cursor":          cursor,
+		"truncated":       truncated,
+		"limit":           limitN,
+		"read_origin":     ignExecLogOriginFacade,
+	}, nil
 }
 
 // ignTaskVerdictNote 结论摘要 = 最近一条「终态回填」平台注记行（不另设存储：摘要即留痕本身）。

@@ -66,6 +66,18 @@ func key(method, route string, status int) string {
 	return method + "|" + route + "|" + strconv.Itoa(status)
 }
 
+// coarseRoute 指标标签只保留一级路径段,避免对外暴露完整路由模板(路由面收敛)。
+func coarseRoute(fullPath string) string {
+	if fullPath == "" {
+		return "unmatched"
+	}
+	parts := strings.SplitN(strings.TrimPrefix(fullPath, "/"), "/", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return "/"
+	}
+	return "/" + parts[0]
+}
+
 // IsHealthProbePath 健康探针路径(不计量、不打访问日志)。
 func IsHealthProbePath(path string) bool {
 	return path == "/health" || path == "/health/live" || path == "/health/ready" || path == "/health/check"
@@ -80,10 +92,7 @@ func Middleware() gin.HandlerFunc {
 		}
 		start := time.Now()
 		c.Next()
-		route := c.FullPath()
-		if route == "" {
-			route = "unmatched"
-		}
+		route := coarseRoute(c.FullPath())
 		k := key(c.Request.Method, route, c.Writer.Status())
 		d := time.Since(start).Seconds()
 		mu.Lock()
@@ -110,9 +119,13 @@ func Middleware() gin.HandlerFunc {
 	}
 }
 
-// Handler 输出 Prometheus 文本格式。
+// Handler 输出 Prometheus 文本格式(关闭时不再输出)。
 func Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !enabled {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
 		var b strings.Builder
 		writeCounter := func(k string, v uint64) {
 			parts := strings.SplitN(k, "|", 3)

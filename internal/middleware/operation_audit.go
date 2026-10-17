@@ -18,8 +18,8 @@ import (
 	// CtxUserID/CtxUsername 位于 service 包(context 键)
 )
 
-// sensitiveRe 请求体摘要脱敏（api_key/client_secret/password/jwt_secret 等字段值）。
-var sensitiveRe = regexp.MustCompile(`(?i)("(?:api_key|client_secret|password|jwt_secret|secret)"\s*:\s*")([^"]*)(")`)
+// sensitiveRe 请求体摘要脱敏（api_key/client_secret/password/new_password/jwt_secret 等字段值）。
+var sensitiveRe = regexp.MustCompile(`(?i)("(?:api_key|client_secret|password|new_password|jwt_secret|secret)"\s*:\s*")([^"]*)(")`)
 
 // OperationAudit 管理写操作审计中间件（须挂在 LoginRequired 之后以取到用户）。
 func OperationAudit() gin.HandlerFunc {

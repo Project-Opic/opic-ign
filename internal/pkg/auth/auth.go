@@ -37,6 +37,8 @@ func PKCEChallenge(verifier string) string {
 type Claims struct {
 	UserID   int64  `json:"uid"`
 	Username string `json:"username"`
+	// Epoch 账号会话代际(sys_user.session_epoch):禁用/改密后递增,旧令牌立即失效。
+	Epoch int64 `json:"epoch"`
 	jwt.RegisteredClaims
 }
 
@@ -48,12 +50,14 @@ func NewState() string {
 }
 
 // IssueLocalToken 签发 HS256 会话令牌(local 模式)。
-// jti(Redis 吊销黑名单用)恒定生成,令牌形状不随 Redis 开关变化。
-func IssueLocalToken(userID int64, username string) (string, error) {
+// jti(Redis 吊销黑名单用)恒定生成,令牌形状不随 Redis 开关变化;
+// epoch 为账号会话代际,禁用/改密后旧令牌即失效。
+func IssueLocalToken(userID int64, username string, epoch int64) (string, error) {
 	cfg := config.Config.Auth
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
+		Epoch:    epoch,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        NewState(),
 			Subject:   fmt.Sprintf("%d", userID),

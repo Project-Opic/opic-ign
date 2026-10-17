@@ -39,6 +39,13 @@ func LoginRequired() gin.HandlerFunc {
 				abort(c, errcode.ErrUnAuth, "登录已失效，请重新登录")
 				return
 			}
+			// 账号生命周期复核:禁用/删除/改密后既有令牌立即失效(逐请求按 sys_user 当前态判定;
+			// DB 读取失败按拒绝处理,fail-closed)。
+			if u, err := service.GetUser(claims.UserID); err != nil || u == nil ||
+				service.Int(u["status"]) != 1 || service.Int(u["session_epoch"]) != claims.Epoch {
+				abort(c, errcode.ErrUnAuth, "登录已失效，请重新登录")
+				return
+			}
 			setUser(c, claims.UserID, claims.Username)
 			c.Next()
 			return
@@ -61,7 +68,7 @@ func LoginRequired() gin.HandlerFunc {
 		}
 		uid := ensureZitadelUser(sub, username, extractClaimRoles(claims))
 		if uid == 0 {
-			abort(c, errcode.ErrToken, "用户未注册且未开启自动 provisioning")
+			abort(c, errcode.ErrToken, "用户未注册、已禁用或未开启自动 provisioning")
 			return
 		}
 		setUser(c, uid, username)
@@ -81,6 +88,9 @@ func setUser(c *gin.Context, uid int64, username string) {
 func ensureZitadelUser(sub, username string, claimRoles []string) int64 {
 	user, err := service.GetUserByUsername(username)
 	if err == nil && user != nil {
+		if service.Int(user["status"]) != 1 {
+			return 0
+		}
 		uid := service.Int(user["id"])
 		if len(claimRoles) > 0 {
 			_ = service.SyncUserRolesByCodes(uid, claimRoles)

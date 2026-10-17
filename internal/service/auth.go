@@ -238,6 +238,11 @@ func BuildLoginPayload(db *gorm.DB, user map[string]any) (map[string]any, error)
 
 // WriteAudit 写审计日志。
 func WriteAudit(db *gorm.DB, userID int64, username, action, detail string) {
+	// 与 audit_logs.username VARCHAR(50) 对齐:登录失败审计的用户名为调用方原样输入,
+	// 超长值会让整条 INSERT 失败(错误被忽略),从而绕过失败留痕。
+	if r := []rune(username); len(r) > 50 {
+		username = string(r[:50])
+	}
 	_, _ = store.Exec(db, `
 		INSERT INTO audit_logs (user_id, username, action, detail) VALUES (?, ?, ?, ?)`,
 		userID, username, action, detail)

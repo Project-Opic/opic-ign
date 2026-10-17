@@ -120,17 +120,25 @@ func CreateUser(data map[string]any) (int64, error) {
 
 // UpdateUser 编辑用户。
 func UpdateUser(userID int64, data map[string]any) error {
-	if exists, err := qOne(`SELECT id FROM sys_user WHERE id = ?`, userID); err != nil {
+	cur, err := qOne(`SELECT status FROM sys_user WHERE id = ?`, userID)
+	if err != nil {
 		return err
-	} else if exists == nil {
+	}
+	if cur == nil {
 		return NotFound("用户")
 	}
-	_, err := qExec(`
-		UPDATE sys_user SET real_name=?, email=?, phone=?, actor_type=?, department_id=?, status=?, updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+	newStatus := orDefaultNum(data["status"], 1)
+	// 由启用转禁用时推进会话代际:重新启用后,禁用前签发的令牌仍保持失效。
+	bump := int64(0)
+	if Int(cur["status"]) == 1 && Int(newStatus) != 1 {
+		bump = 1
+	}
+	_, err = qExec(`
+		UPDATE sys_user SET real_name=?, email=?, phone=?, actor_type=?, department_id=?, status=?, session_epoch=session_epoch+?, updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS')
 		WHERE id=?`,
 		data["real_name"], data["email"], data["phone"],
 		orDefault(data["actor_type"], "HUMAN"), data["department_id"],
-		orDefaultNum(data["status"], 1), userID)
+		newStatus, bump, userID)
 	return err
 }
 
@@ -171,7 +179,7 @@ func ResetPassword(userID int64, newPwd string) error {
 	if newPwd == "" {
 		return Fail(errcode.ErrParam, "新密码不能为空")
 	}
-	_, err := qExec(`UPDATE sys_user SET password=?, updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
+	_, err := qExec(`UPDATE sys_user SET password=?, session_epoch=session_epoch+1, updated_at=to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id=?`,
 		HashPassword(newPwd), userID)
 	return err
 }

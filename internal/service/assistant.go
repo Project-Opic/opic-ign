@@ -244,7 +244,7 @@ func ignHints() []string {
 
 // ---------- 只读 SQL 工具(白名单 + SELECT-only + 强制 LIMIT + 审计) ----------
 
-var forbiddenSQLRe = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|MERGE|EXECUTE|SET|BEGIN|COMMIT|ROLLBACK)\b`)
+var forbiddenSQLRe = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|MERGE|EXECUTE|SET|BEGIN|COMMIT|ROLLBACK|INTO)\b`)
 var selectOnlyRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH)\s.+$`)
 
 // AllowedSQLTables 只读工具可用表(与本体注册表白名单对齐 + 本域扩展/配置表)。
@@ -263,9 +263,492 @@ type SQLQueryResult struct {
 	SQL     string           `json:"sql"`
 }
 
+// ---------- 只读 SQL 词法级表引用校验(不引入 pg 语法解析依赖) ----------
+
+type sqlTokenKind int
+
+const (
+	tkWord sqlTokenKind = iota
+	tkQuoted
+	tkString
+	tkPunct
+)
+
+type sqlToken struct {
+	kind sqlTokenKind
+	text string
+}
+
+func sqlIdentByte(b byte) bool {
+	return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// sqlReservedAfterRef 表引用后不可作为别名/列清单起始的保留字(遇到即结束本次引用解析)。
+var sqlReservedAfterRef = map[string]bool{
+	"as": true, "cross": true, "except": true, "fetch": true, "for": true,
+	"from": true, "full": true, "group": true, "having": true, "inner": true,
+	"intersect": true, "join": true, "left": true, "limit": true, "natural": true,
+	"offset": true, "on": true, "order": true, "right": true, "select": true,
+	"tablesample": true, "union": true, "using": true, "where": true, "window": true, "with": true,
+}
+
+// lexSQL 把 SQL 切成词法单元;注释/字符串内容不参与关键词识别,未知字符一律失败闭合。
+func lexSQL(s string) ([]sqlToken, bool) {
+	toks := make([]sqlToken, 0, 32)
+	for i := 0; i < len(s); {
+		ch := s[i]
+		switch {
+		case ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r':
+			i++
+		case ch == '-' && i+1 < len(s) && s[i+1] == '-':
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+		case ch == '/' && i+1 < len(s) && s[i+1] == '*':
+			depth := 0
+			for i < len(s) {
+				if i+1 < len(s) && s[i] == '/' && s[i+1] == '*' {
+					depth++
+					i += 2
+					continue
+				}
+				if i+1 < len(s) && s[i] == '*' && s[i+1] == '/' {
+					depth--
+					i += 2
+					if depth == 0 {
+						break
+					}
+					continue
+				}
+				i++
+			}
+			if depth != 0 {
+				return nil, false
+			}
+		case ch == '\'':
+			// 标准字符串;拒绝 E'/B'/X' 前缀形态(可引入转义或字节串)
+			if i > 0 && strings.IndexByte("eEbBxX", s[i-1]) >= 0 && (i == 1 || !sqlIdentByte(s[i-2])) {
+				return nil, false
+			}
+			i++
+			closed := false
+			for i < len(s) {
+				if s[i] == '\'' {
+					if i+1 < len(s) && s[i+1] == '\'' {
+						i += 2
+						continue
+					}
+					i++
+					closed = true
+					break
+				}
+				i++
+			}
+			if !closed {
+				return nil, false
+			}
+			toks = append(toks, sqlToken{kind: tkString, text: "''"})
+		case ch == '"' || ch == '`':
+			quote := ch
+			var sb strings.Builder
+			i++
+			closed := false
+			for i < len(s) {
+				if s[i] == quote {
+					if i+1 < len(s) && s[i+1] == quote {
+						sb.WriteByte(quote)
+						i += 2
+						continue
+					}
+					i++
+					closed = true
+					break
+				}
+				sb.WriteByte(s[i])
+				i++
+			}
+			if !closed || sb.Len() == 0 {
+				return nil, false
+			}
+			toks = append(toks, sqlToken{kind: tkQuoted, text: sb.String()})
+		case sqlIdentByte(ch):
+			start := i
+			for i < len(s) && sqlIdentByte(s[i]) {
+				i++
+			}
+			toks = append(toks, sqlToken{kind: tkWord, text: s[start:i]})
+		case strings.IndexByte("(),.*=<>!+-/%:|?", ch) >= 0:
+			toks = append(toks, sqlToken{kind: tkPunct, text: string(ch)})
+			i++
+		default:
+			return nil, false
+		}
+	}
+	return toks, true
+}
+
+// normalizeSQLTableName 归一化表名(小写、标识符字符、长度上限、不得数字开头);不合法返回空串。
+func normalizeSQLTableName(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" || len(s) > 64 || (s[0] >= '0' && s[0] <= '9') {
+		return ""
+	}
+	for i := 0; i < len(s); i++ {
+		if !sqlIdentByte(s[i]) {
+			return ""
+		}
+	}
+	return s
+}
+
+func sqlSkipBalanced(toks []sqlToken, i int) (int, bool) {
+	depth := 0
+	for ; i < len(toks); i++ {
+		if toks[i].kind != tkPunct {
+			continue
+		}
+		switch toks[i].text {
+		case "(":
+			depth++
+		case ")":
+			depth--
+			if depth == 0 {
+				return i + 1, true
+			}
+			if depth < 0 {
+				return 0, false
+			}
+		}
+	}
+	return 0, false
+}
+
+// sqlCTENames 识别语句开头 WITH [RECURSIVE] 定义的 CTE 名(仅顶层,子查询内 CTE 一律不接受);
+// 同时返回各 CTE 体 '(' 的下标,供子查询检查放行。
+func sqlCTENames(toks []sqlToken) (map[string]bool, map[int]bool) {
+	names := map[string]bool{}
+	bodies := map[int]bool{}
+	if len(toks) == 0 || toks[0].kind != tkWord || !strings.EqualFold(toks[0].text, "WITH") {
+		return names, bodies
+	}
+	i := 1
+	if i < len(toks) && toks[i].kind == tkWord && strings.EqualFold(toks[i].text, "RECURSIVE") {
+		i++
+	}
+	for i < len(toks) {
+		nameTok := toks[i]
+		if nameTok.kind != tkWord && nameTok.kind != tkQuoted {
+			break
+		}
+		if nameTok.kind != tkQuoted || nameTok.text == strings.ToLower(nameTok.text) {
+			if n := normalizeSQLTableName(nameTok.text); n != "" {
+				names[n] = true
+			}
+		}
+		i++
+		if i < len(toks) && toks[i].kind == tkPunct && toks[i].text == "(" {
+			next, ok := sqlSkipBalanced(toks, i)
+			if !ok {
+				break
+			}
+			i = next
+		}
+		if i >= len(toks) || toks[i].kind != tkWord || !strings.EqualFold(toks[i].text, "AS") {
+			break
+		}
+		i++
+		if i >= len(toks) || toks[i].kind != tkPunct || toks[i].text != "(" {
+			break
+		}
+		bodies[i] = true
+		next, ok := sqlSkipBalanced(toks, i)
+		if !ok {
+			break
+		}
+		i = next
+		if i < len(toks) && toks[i].kind == tkPunct && toks[i].text == "," {
+			i++
+			continue
+		}
+		break
+	}
+	return names, bodies
+}
+
+// sqlParseRefName 解析一个表引用(仅接受单段名,拒绝 schema 限定,避免跨 schema 同名表绕过白名单)。
+func sqlParseRefName(toks []sqlToken, i int) (string, int, bool) {
+	if i >= len(toks) {
+		return "", i, false
+	}
+	t := toks[i]
+	if t.kind != tkWord && t.kind != tkQuoted {
+		return "", i, false
+	}
+	if t.kind == tkQuoted && t.text != strings.ToLower(t.text) {
+		return "", i, false // 引号标识符大小写敏感:非全小写可能与未加引号同名表混淆,失败闭合
+	}
+	i++
+	if i < len(toks) && toks[i].kind == tkPunct && toks[i].text == "." {
+		return "", i, false
+	}
+	n := normalizeSQLTableName(t.text)
+	if n == "" {
+		return "", i, false
+	}
+	return n, i, true
+}
+
+// sqlSkipRefSuffix 跳过表引用后缀:继承星号、[AS] alias、列别名清单、TABLESAMPLE [REPEATABLE]。
+func sqlSkipRefSuffix(toks []sqlToken, i int) (int, bool) {
+	j := i
+	if j < len(toks) && toks[j].kind == tkPunct && toks[j].text == "*" {
+		j++
+	}
+	if j < len(toks) && toks[j].kind == tkWord && strings.EqualFold(toks[j].text, "AS") {
+		j++
+		if j >= len(toks) || (toks[j].kind != tkWord && toks[j].kind != tkQuoted) {
+			return 0, false
+		}
+		j++
+	} else if j < len(toks) && (toks[j].kind == tkQuoted ||
+		(toks[j].kind == tkWord && !sqlReservedAfterRef[strings.ToLower(toks[j].text)])) {
+		j++
+	}
+	if j < len(toks) && toks[j].kind == tkPunct && toks[j].text == "(" {
+		next, ok := sqlSkipBalanced(toks, j)
+		if !ok {
+			return 0, false
+		}
+		j = next
+	}
+	if j < len(toks) && toks[j].kind == tkWord && strings.EqualFold(toks[j].text, "TABLESAMPLE") {
+		j++
+		if j >= len(toks) || (toks[j].kind != tkWord && toks[j].kind != tkQuoted) {
+			return 0, false
+		}
+		j++
+		if j >= len(toks) || toks[j].kind != tkPunct || toks[j].text != "(" {
+			return 0, false
+		}
+		next, ok := sqlSkipBalanced(toks, j)
+		if !ok {
+			return 0, false
+		}
+		j = next
+		if j < len(toks) && toks[j].kind == tkWord && strings.EqualFold(toks[j].text, "REPEATABLE") {
+			j++
+			if j >= len(toks) || toks[j].kind != tkPunct || toks[j].text != "(" {
+				return 0, false
+			}
+			next, ok = sqlSkipBalanced(toks, j)
+			if !ok {
+				return 0, false
+			}
+			j = next
+		}
+	}
+	return j, true
+}
+
+// sqlSkipJoinQual 跳过 ON 连接条件:仅按括号深度跟踪,深度 0 的逗号/JOIN/子句关键字即结束。
+func sqlSkipJoinQual(toks []sqlToken, i int) int {
+	depth := 0
+	for i < len(toks) {
+		t := toks[i]
+		if t.kind == tkPunct {
+			switch t.text {
+			case "(":
+				depth++
+			case ")":
+				if depth == 0 {
+					return i
+				}
+				depth--
+			case ",":
+				if depth == 0 {
+					return i
+				}
+			}
+			i++
+			continue
+		}
+		if depth == 0 && t.kind == tkWord {
+			switch strings.ToUpper(t.text) {
+			case "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL",
+				"WHERE", "GROUP", "HAVING", "WINDOW", "ORDER", "LIMIT", "OFFSET",
+				"FETCH", "FOR", "UNION", "EXCEPT", "INTERSECT":
+				return i
+			}
+		}
+		i++
+	}
+	return i
+}
+
+// sqlParseTableRef 解析单个 from_item 的表引用(含 ONLY/继承星号/别名/TABLESAMPLE 后缀)。
+func sqlParseTableRef(toks []sqlToken, i int) (string, int, bool) {
+	if i < len(toks) && toks[i].kind == tkWord && strings.EqualFold(toks[i].text, "ONLY") {
+		i++
+	}
+	name, next, ok := sqlParseRefName(toks, i)
+	if !ok {
+		return "", i, false
+	}
+	if next < len(toks) && toks[next].kind == tkPunct && toks[next].text == "(" {
+		return "", next, false // 表函数/派生表
+	}
+	next, ok = sqlSkipRefSuffix(toks, next)
+	if !ok {
+		return "", next, false
+	}
+	return name, next, true
+}
+
+// sqlParseFromItems 解析完整 FROM 子句:from_item { ',' from_item | join ... ON/USING ... }。
+func sqlParseFromItems(toks []sqlToken, i int, refs *[]string) (int, bool) {
+	needRef := true
+	for {
+		if i >= len(toks) {
+			return i, true
+		}
+		if needRef {
+			name, next, ok := sqlParseTableRef(toks, i)
+			if !ok {
+				return 0, false
+			}
+			*refs = append(*refs, name)
+			i = next
+			needRef = false
+			if i >= len(toks) {
+				return i, true
+			}
+		}
+		t := toks[i]
+		if t.kind == tkPunct && t.text == "," {
+			i++
+			needRef = true
+			continue
+		}
+		if t.kind == tkWord {
+			switch strings.ToUpper(t.text) {
+			case "JOIN":
+				i++
+				needRef = true
+				continue
+			case "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL":
+				for i < len(toks) && toks[i].kind == tkWord {
+					w := strings.ToUpper(toks[i].text)
+					i++
+					if w == "JOIN" {
+						break
+					}
+					if w != "INNER" && w != "LEFT" && w != "RIGHT" && w != "FULL" && w != "CROSS" && w != "NATURAL" && w != "OUTER" {
+						return 0, false
+					}
+				}
+				if i == 0 || toks[i-1].kind != tkWord || !strings.EqualFold(toks[i-1].text, "JOIN") {
+					return 0, false
+				}
+				needRef = true
+				continue
+			case "ON":
+				i = sqlSkipJoinQual(toks, i+1)
+				continue
+			case "USING":
+				i++
+				if i >= len(toks) || toks[i].kind != tkPunct || toks[i].text != "(" {
+					return 0, false
+				}
+				next, ok := sqlSkipBalanced(toks, i)
+				if !ok {
+					return 0, false
+				}
+				i = next
+				continue
+			}
+		}
+		return i, true
+	}
+}
+
+// checkReadOnlyRelations 词法级校验所有 FROM/JOIN 表引用:必须可解析且命中白名单(或语句内 CTE)。
+// 逗号连接、引号/反引号标识符、注释分隔、表函数/派生表、FROM-less 等形态按真实语义解析;解析失败即拒绝。
+func checkReadOnlyRelations(sqlText string) error {
+	toks, ok := lexSQL(sqlText)
+	if !ok {
+		return Fail(errcode.ErrRule, "SQL 无法通过词法校验,已拒绝（只读工具）")
+	}
+	cte, cteBodies := sqlCTENames(toks)
+	// TABLE <name> 是等价于 SELECT * FROM 的查询形态,可绕过 FROM 词法扫描,直接拒绝。
+	for _, t := range toks {
+		if t.kind == tkWord && strings.EqualFold(t.text, "TABLE") {
+			return Fail(errcode.ErrRule, "SQL 不支持 TABLE 语法,已拒绝（只读工具）")
+		}
+	}
+	// 子查询(含标量子查询/派生表/CTE 之外的 WITH)一律拒绝;仅放行已识别的 CTE 体。
+	for i := 0; i+1 < len(toks); i++ {
+		if toks[i].kind != tkPunct || toks[i].text != "(" || cteBodies[i] {
+			continue
+		}
+		if toks[i+1].kind != tkWord {
+			continue
+		}
+		switch strings.ToUpper(toks[i+1].text) {
+		case "SELECT", "WITH", "TABLE", "VALUES":
+			return Fail(errcode.ErrRule, "SQL 不支持子查询,已拒绝（只读工具）")
+		}
+	}
+	// FROM 也可出现在 extract/substring/trim/overlay 的表达式语法中(非表引用),整段跳过;
+	// 其中的子查询已在上一步被拒,故跳过不影响白名单校验。
+	skip := make([]bool, len(toks))
+	for i := 1; i < len(toks); i++ {
+		if toks[i].kind != tkPunct || toks[i].text != "(" || toks[i-1].kind != tkWord {
+			continue
+		}
+		switch strings.ToLower(toks[i-1].text) {
+		case "extract", "substring", "trim", "overlay":
+			end, ok := sqlSkipBalanced(toks, i)
+			if !ok {
+				return Fail(errcode.ErrRule, "SQL 括号不配对,已拒绝（只读工具）")
+			}
+			for k := i; k < end; k++ {
+				skip[k] = true
+			}
+			i = end - 1
+		}
+	}
+	refs := make([]string, 0, 4)
+	kwCount := 0
+	for i := 0; i < len(toks); i++ {
+		if toks[i].kind != tkWord || skip[i] || !strings.EqualFold(toks[i].text, "FROM") {
+			continue
+		}
+		kwCount++
+		end, ok := sqlParseFromItems(toks, i+1, &refs)
+		if !ok {
+			return Fail(errcode.ErrRule, "SQL 表引用无法解析,已拒绝（只读工具）")
+		}
+		i = end - 1
+	}
+	if kwCount == 0 {
+		return Fail(errcode.ErrRule, "只读 SQL 必须包含可解析的 FROM/JOIN 表引用")
+	}
+	allowed := make(map[string]bool, len(AllowedSQLTables))
+	for _, t := range AllowedSQLTables {
+		allowed[t] = true
+	}
+	for _, r := range refs {
+		if allowed[r] || cte[r] {
+			continue
+		}
+		return Fail(errcode.ErrForbidden, "表 %s 不在只读白名单内（允许:%s）", r, strings.Join(AllowedSQLTables, ","))
+	}
+	return nil
+}
+
 // AssistantRunReadOnlySQL 执行只读查询:
-//   - 仅单条 SELECT/WITH 语句(禁止分号尾随多语句、禁止 DML/DDL 关键词);
-//   - 仅白名单表(解析 FROM/JOIN 后的表名);
+//   - 仅单条 SELECT/WITH 语句(禁止分号尾随多语句、禁止 DML/DDL/INTO 关键词);
+//   - 仅白名单表(词法级解析每个 FROM/JOIN 表引用,含逗号连接;解析失败即拒绝);
 //   - 无 LIMIT 时自动追加 LIMIT 100;
 //   - 每次调用写审计(audit_logs,含 SQL 与返回行数)。
 func AssistantRunReadOnlySQL(uid int64, username, raw string) (*SQLQueryResult, error) {
@@ -282,20 +765,9 @@ func AssistantRunReadOnlySQL(uid int64, username, raw string) (*SQLQueryResult, 
 	if forbiddenSQLRe.MatchString(sqlText) {
 		return nil, Fail(errcode.ErrRule, "检测到写操作关键词,已拒绝（只读工具）")
 	}
-	// 表白名单:FROM/JOIN 后的标识符(含 schema 前缀时取尾段;表名统一 ign_* / 业务表名)
-	tableRe := regexp.MustCompile(`(?i)\b(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_.]*)`)
-	allowed := map[string]bool{}
-	for _, t := range AllowedSQLTables {
-		allowed[t] = true
-	}
-	for _, m := range tableRe.FindAllStringSubmatch(sqlText, -1) {
-		tbl := m[1]
-		if i := strings.LastIndex(tbl, "."); i >= 0 {
-			tbl = tbl[i+1:]
-		}
-		if !allowed[strings.ToLower(tbl)] {
-			return nil, Fail(errcode.ErrForbidden, "表 %s 不在只读白名单内（允许:%s）", tbl, strings.Join(AllowedSQLTables, ", "))
-		}
+	// 表引用校验:词法级关系集比对(逗号连接/引号/注释/FROM-less 等形态一律失败闭合)
+	if err := checkReadOnlyRelations(sqlText); err != nil {
+		return nil, err
 	}
 	// 强制 LIMIT
 	if !regexp.MustCompile(`(?i)\bLIMIT\s+\d+`).MatchString(sqlText) {

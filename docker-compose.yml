@@ -80,6 +80,8 @@ services:
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       AUTH_MODE: ${AUTH_MODE:-local}
       ZITADEL_ISSUER: ${ZITADEL_ISSUER:-}
+      # 可信反代 CIDR(逗号分隔):经 Traefik 接入时必须设为 opic-net 网段,否则来源 IP 退化为网关地址
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       ZITADEL_CLIENT_ID: ${ZITADEL_CLIENT_ID:-}
       ZITADEL_CLIENT_SECRET: ${ZITADEL_CLIENT_SECRET:-}
       ZITADEL_REDIRECT_URL: ${ZITADEL_REDIRECT_URL:-}
@@ -111,8 +113,8 @@ services:
       - traefik.enable=true
       - traefik.docker.network=${DOCKER_NETWORK:-opic-net}
       - opic.stack=ign
-      # 子域路由（TLS 入口由 step1 Traefik 的 websecure 承载；/api|/health|/metrics → 后端）
-      - traefik.http.routers.ign-api.rule=Host(`ign.${BASE_DOMAIN:?BASE_DOMAIN 未配置}`) && (PathPrefix(`/api`) || PathPrefix(`/health`) || Path(`/metrics`))
+      # 子域路由（TLS 入口由 step1 Traefik 的 websecure 承载；仅 /api|/health 对外，/metrics 不出网）
+      - traefik.http.routers.ign-api.rule=Host(`ign.${BASE_DOMAIN:?BASE_DOMAIN 未配置}`) && (PathPrefix(`/api`) || PathPrefix(`/health`))
       - traefik.http.routers.ign-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.ign-api.priority=100
       - traefik.http.routers.ign-api.service=ign-api
@@ -130,8 +132,8 @@ services:
       - traefik.docker.network=${DOCKER_NETWORK:-opic-net}
       - opic.stack=ign
       # ⚠ Traefik 的 service 只指向 label 所在容器（step1 实测坑③）：
-      # web 路由必须挂 frontend 容器；/api|/health|/metrics 由 ign 容器的 api 路由（priority 100）承接
-      - traefik.http.routers.ign-web.rule=Host(`ign.${BASE_DOMAIN}`)
+      # web 路由必须挂 frontend 容器；/api|/health 由 ign 容器的 api 路由（priority 100）承接；/metrics 显式 404
+      - traefik.http.routers.ign-web.rule=Host(`ign.${BASE_DOMAIN}`) && !Path(`/metrics`)
       - traefik.http.routers.ign-web.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.ign-web.priority=1
       - traefik.http.routers.ign-web.service=ign-web

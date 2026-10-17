@@ -14,6 +14,7 @@ import (
 	"gitcode.com/opic-ontology/opic-techbase/internal/api/common"
 	"gitcode.com/opic-ontology/opic-techbase/internal/config"
 	"gitcode.com/opic-ontology/opic-techbase/internal/pkg/auth"
+	"gitcode.com/opic-ontology/opic-techbase/internal/service"
 	"gitcode.com/opic-ontology/opic-techbase/pkg/errcode"
 
 	"github.com/gin-gonic/gin"
@@ -69,7 +70,13 @@ func CasdoorCallback(c *gin.Context) {
 		c.JSON(http.StatusOK, errcode.New(errcode.ErrToken, "用户未注册且未开启自动 provisioning", nil))
 		return
 	}
-	tk, err := auth.IssueLocalToken(uid, username)
+	// 账号生命周期复核:禁用/删除的账号即使持有有效 IdP 令牌也不再签发本地会话。
+	u, err := service.GetUser(uid)
+	if err != nil || u == nil || service.Int(u["status"]) != 1 {
+		c.JSON(http.StatusOK, errcode.New(errcode.ErrToken, "账号不存在或已禁用", nil))
+		return
+	}
+	tk, err := auth.IssueLocalToken(uid, username, service.Int(u["session_epoch"]))
 	if err != nil {
 		common.FailJSON(c, err)
 		return

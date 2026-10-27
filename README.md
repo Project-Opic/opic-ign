@@ -1,371 +1,271 @@
-# opic-ignition-center —— O-IGN 点火中心(交付执行域能力中心,gopherforge 技术栈)
+# opic-ign
 
-OPIC 开放智能算力平台的 **点火中心**(MCC 交付执行域):交付版本目录 / 镜像预推 / 执行机注册与引导 /
-通道证书绑定 / 白名单执行任务 / 对账与纠偏(AGG-IGN-01..06)的完整落地;承接技术底座 opic-techbase 的技术基线。
+> 简体中文: [README-zh.md](README-zh.md)
 
-> **血缘**:平台级 fork 自 `opic-ai/opic-techbase`(技术基线事实源 `gitcode.com/opic-ontology/opic-techbase`)。
-> 底座仅承载技术设施层,业务语义层归本中心 —— 中心业务独立演进,底座安全修复单向回流。
->
-> 中心参数:`CENTER_CODE=ign`;opicdb `schema=ign`;NATS `stream=OPIC_IGN`、主题域 `opic.ign.>`;
-> Temporal `task_queue=ign`;API 前缀 `/api/v1/ign/*`;权限码 `ign:FUNC-01..37`(对齐 M5 PERM-FUNC-xx)。
+[![License](https://img.shields.io/badge/License-MulanPSL--2.0-2E7D32)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](frontend/package.json)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](migrations)
 
-## O-IGN 落地总览(ontology-driven-dev 阶段三)
+[Documentation](#documentation) | [Architecture](#architecture) | [Usage](#usage) | [Deployment](#deployment) | [Roadmap](#roadmap) | [License](#license)
 
-### 三步改造
+**opic-ign is the Ignition Center of the OPIC open intelligent compute platform**: a capability center for the delivery-execution domain, forked from [opic-techbase](https://github.com/Project-Opic/opic-techbase). It runs the full delivery lifecycle — release catalogs, image pre-push, executor registration and bootstrap, channel certificate binding, whitelisted execution tasks, and reconciliation — and exposes it all to upstream centers through a delivery facade.
 
-| 步骤 | 落点 |
+The center answers a recurring delivery question: how do you ship software to a fleet of execution machines without letting command surfaces leak? Every destructive action passes through a whitelist of action codes; the "action code → argv" mapping is a domain-private concern that never enters the ontology models or leaves the center. Logs are masked before they are written; credentials never appear in any query response.
+
+This repository contains the backend service (Gin), the console frontend (React + Ant Design), business migrations, ontology models (YAML), deployment manifests, and developer documentation.
+
+## Documentation
+
+| Document | Contents |
 |---|---|
-| ① 七模型入库 | `models/`(M1 对象/M2 行为/M3 规则/M5 主体/M6 流程/M7 报表/MU 界面 + manifest.json);M6 `FLOW-PROC-APP-01` 补可执行 nodeGraph(含 edges,审批引擎按 approval_outcome 选路) |
-| ② 中心隔离 | `configs/config.yml`(center_code/schema/stream/subject/task_queue 显式 ign)、`.env.example` |
-| ③ 业务 DDL | `migrations/000004_business_ign.sql`(9 表:delivery_version / image_prepush_item / executor / bootstrap_credential / executor_tls_binding / exec_task / ign_force_remove / ign_reconcile_log / ign_platform_config / ign_task_log)+ `migrations/000005_ign_delivery.sql`(v1.1:exec_task 增 step_code / source_task_no / source_step_index / verdict_source 四列,`request_token_digest` 改条件必填,幂等与排队索引,`task_log` 更名子实体表 `ign_task_log` 并增 `masked`);底座示例表 customer_application 自 000001 移除 |
+| [Onboarding](docs/ONBOARDING.md) | Background, architecture, environment, first run, development workflow |
+| [Build & Deployment](docs/DEPLOYMENT.md) | Build, production rollout, migration rollback, fork checklist |
+| [Operations](docs/OPERATIONS.md) | Health checks, monitoring and alerting, logging, backup, credentials, troubleshooting |
+| [FAQ](docs/FAQ.md) | Field notes on SSO, SQL, deployment, frontend, and AI |
+| [Acceptance Report](docs/P3真实例验收报告-2026-10-07.html) | Real-instance acceptance evidence (2026-10-07) |
+| [Web Test Report](docs/Web测试报告-点火与集群中心-2026-10-06.html) | Console web test evidence (2026-10-06) |
 
-### 十步实现(行为 → 服务层 → 页面)
+## Architecture
 
-- **聚合根 6**:交付版本(VER)/镜像预推明细(IMG)/执行机(EXE)/引导凭据(BCR)/通道证书绑定(TLS)/执行任务(TSK);
-  编号三段式 `{三位前缀}-YYYYMMDD-{4 位流水}`,服务层事务内 `pg_advisory_xact_lock` 防重号,唯一索引兜底。
-  v1.1 增子实体 `TaskLogLine`(表 `ign_task_log`,所属任务 + 行游标,不独立编号)。
-- **本机执行位内核**(`internal/service/ign_exec.go`,B-AUTO-11~15 + R-13/R-14/R-15 + INV-36~40):
-  执行位 = 点火中心后端容器自身(LOCAL 执行机那一行),kubeasz/ezctl 由发行包挂载提供,镜像不预装第三方交付工具;
-  「动作码 → argv」是**本域私有映射**(映射内容与命令语义不入模型、不出域,对上游只暴露动作码与结论);
-  fork + 逐行采集 stdout/stderr → 写 `ign_task_log`(游标单调 INV-38、写前不可逆脱敏 R-16/INV-40)、
-  取消走请求标记唤醒(B-AUTO-13)、进程退出由判定网关写终态 + 结论依据(EXIT_CODE / PLAY_RECAP),
-  平台重启后在途任务无法验真 ⇒ 显式 `LOST`(B-AUTO-14,第四终态,退出码位为空);
-  挂载缺失/不可执行 ⇒ 受理即刻拒绝并记 `TOOL_UNAVAILABLE`,绝不静默改走别的执行位(R-15);
-  白名单枚举 ≠ 可提交集合:15 个动作码分三层可达面 —— 交付动作层 11 项(人工 + 门面)、
-  `ezctl.new`(internal,只归 B-AUTO-15 工作目录前置)、`scripts.*` 平台项(platform,只归系统自动行为)。
-- **行为 37**(FUNC-01..37):版本登记/修改/下载/归档/软删/列表/详情/跨中心视图/预推/覆写/断点续推/预推明细;
-  执行机注册/令牌重签/注销/能力调整/列表/详情/跨中心视图;TLS 续期/降级/清单;任务提交/取消/台账/详情/日志/对账;
-  统计总览/运行参数;强制注销提交/通过/驳回;v1.1 交付门面四件套:受理(FUNC-34)/回执与增量日志(FUNC-35)/撤销(FUNC-36)/受理台账查询(FUNC-37)。
-- **规则中文提示**:INV-01..40 + R-01..R-17 关键路径全部落服务层(如 INV-04「组件版本组创建后不可修改——会被选进集群配置的契约字段」、
-  R-12「白名单外动作与拼接风险提交一律治理拒绝并审计」、INV-36「安装族动作的步骤编码只认 01~07 参数域」、
-  INV-38「日志行游标在任务内单调,不独立编号」、R-16/INV-40「口令/令牌/私钥在写入前即不可逆脱敏」);
-  校验时机对齐模型(保存即校验 vs 仅提交时强制校验,见 `/api/v1/ign/dictionaries` 的 checkpoint_note)。
-- **审批流 1**:执行机强制注销(FLOW-PROC-APP-01,单级,IGN-ROLE-02 审批);提交(保存草稿/提交两种形态)→
-  通过 = 取消运行任务 + 拆除链(R-07 次序固定:吊销双证书 → 凭据置已吊销 → 状态置已注销)→ 注销报告留痕;驳回 = 状态不变、意见留痕。
-- **页面 7**(MU frmIgn* 七屏):版本目录(/ign/version)/发行包与镜像(/ign/image)/执行机操作台(/ign/executor)/
-  通道安全台(/ign/tls)/任务桥接(/ign/task,主从布局)/日志与对账(/ign/log,页签布局:任务日志·对账纠偏·门面受理台账)/运行观测(/ign/ops);
-  另含审批中心三页适配。v1.1 不新增屏幕:门面受理台账(FUNC-37)是 /ign/log 的第三页签,任务桥接页只增「步骤编码/结论依据/来源反查」列与只读日志子表。
-- **事件**:`opic.ign.version.* / executor.* / prepush.* / task.* / tls.* / ops.* / delivery.accepted`(旁路发布,失败仅记日志)。
-- **AI 对话框**:本体注入(system 提示词注入七模型摘要:聚合/表白名单/关键规则/编号口径,v1.1 追加 INV-34~40 + R-15/R-16/R-17 + 7.3 三层可达面)+
-  只读 SQL 工具(`POST /api/assistant/query`:仅 SELECT/WITH、ign_* 白名单、强制 LIMIT 100、每次写审计;
-  **白名单刻意不含 bootstrap_credential** —— INV-22 令牌三要素不得出现在任何查询响应)。
-- **代理侧端点**(IGN-ROLE-05 服务身份,登录即可 + 审计):`/api/v1/ign/agent/bootstrap`(引导回连,R-03/R-04)、
-  `/api/v1/ign/agent/heartbeat`(心跳,R-06 计数纠偏)、`/api/v1/ign/task/:taskNo/complete`(任务回执,R-05/R-09)。
-- **交付门面端点**(FUNC-34~36,供 O-CLC 等上游中心单步下发;`Authorization: Bearer <delivery.facade_token>`):
-  `POST /api/v1/ign/delivery/submit`(受理)、`GET /api/v1/ign/delivery/receipt/:ref?since_seq=`(回执 + 增量日志)、
-  `POST /api/v1/ign/delivery/cancel/:ref`(撤销);台账 `GET /api/v1/ign/facade/task`(FUNC-37,人工只读)。
-  三处口径与主链路不同,均为设计定形:**flat JSON `{return_code, error_msg}` + 非 200**(Z1 治理拒绝 403 /
-  形态与规则 400 / 状态·容量·唯一 409 / 引用未命中 404 / 其余 500),不套 `returnInfo`;
-  请求体不含命令面/参数数组/工作目录(命令面由本域私有映射派生);幂等键 =「来源任务标识 + 来源步骤序号」(INV-35),
-  回执状态取值域 = `IGN_TASK_STATUS` 字典码(含 `COMPLETED`,由被调用方定义);
-  `facade_token` 未配置 ⇒ 门面三接口一律 401 关闭(不降级放行)。
-  两条鉴权腿挂在 `LoginRequired` **之外**(Gin 会把 `Authorization: Bearer` 当会话 JWT 先消费掉,上游服务令牌就永远解析不到):
-  `FacadeRequired`(服务身份)+ `RequirePermission(ign:FUNC-34~36)`(本域执行权限),缺一不可。
-- **字典取值域唯一来源**(`/api/v1/ign/dictionaries`):界面/门面的下拉与展示一律取注册表字典项,不在前端硬编码 ——
-  `IGN_ACTION`(15 动作码)/ `IGN_EXECUTOR_STATUS` / `IGN_TASK_STATUS`(含第四终态 `LOST`)/ `IGN_INSTALL_STEP`(01~07,INV-36)
-  / `IGN_VERDICT_SOURCE`(EXIT_CODE / PLAY_RECAP / AGENT_RECEIPT / TRACE_LOST,INV-37)+ `checkpoint_note`(校验时机口径)。
-- **跨域留痕口径**(不静默降级):asset_ref/cluster_ref/cert_ref 只存标识不直查他域表;
-  跨中心方向 v1.1 已落"被调用方"侧 —— O-CLC 全生命周期动作经交付门面单步下发(Bearer 令牌,`source_task_no` + `source_step_index` 反查留痕);
-  O-AST 资产存在性核对、O-CRT 证书签发/吊销两处跨中心通道仍未接入,REMOTE 代理对端本期留位不实现(Q-68),
-  均在响应/注销报告/对账台账如实留痕。
+opic-ign runs as two units that share a single `internal/service` business layer:
 
-### 账号矩阵(M5 种子;local 模式口令均为 admin123)
+- **`ignition-center`** — the primary backend. Gin serves the `/api/v1/ign/*` REST surface plus `/health` and `/metrics` probes. On startup it runs goose migrations, imports M5 seeds (roles / permissions / menus / accounts / parameter defaults / the LOCAL executor / the facade service account) and the M6 approval flow, all idempotently.
+- **`frontend`** — a React SPA served by nginx, covering the seven business screens plus the approval center.
 
-| 账号 | 角色 | 权限概要 |
+Request paths:
+
+- Browser → Traefik (`ign.<domain>`) → `/api`, `/health`, `/metrics` to `ignition-center`; everything else to `frontend`.
+- Upstream center (e.g. O-CLC) → `POST /api/v1/ign/delivery/*` (Bearer facade token) → delivery facade → `internal/service`.
+
+Data plane: PostgreSQL 16 (business database, center schema `ign`, 11 tables across 5 goose migrations), Redis (token revocation blacklist, optional), NATS JetStream (stream `OPIC_IGN`, subject domain `opic.ign.>`, optional), and Temporal (task queue `ign`, optional).
+
+Every business response uses a uniform envelope — `{"returnInfo":{"returnCode","errorMsg"},"data":...}` with `SUC0000` on success. The delivery facade is a deliberate exception: it answers with a flat `{return_code, error_msg}` body plus a non-200 status (403 governance refusal / 400 form and rule violations / 409 state, capacity, uniqueness / 404 reference miss / 500 otherwise), and never carries the command surface in its request body.
+
+### Core Capabilities
+
+| Capability | What it does |
+|---|---|
+| **Release catalog** | Delivery version registration, modification, download, archiving, soft delete, list, detail, and cross-center view (FUNC-01~09, 28) |
+| **Image pre-push** | Pre-push items with overwrite and breakpoint resume, plus detail listing (FUNC-10~12) |
+| **Executor management** | Executor registration, token re-signing, deregistration, capability adjustment, list, detail, cross-center view (FUNC-13~19, 23) |
+| **Channel certificates** | TLS binding renewal, degradation, and inventory (FUNC-20~22) |
+| **Execution tasks** | Task submission with idempotent replay protection, cancellation, ledger, detail, and logs (FUNC-23~26) |
+| **Reconciliation** | Statistics overview, runtime parameters, reconciliation and correction ledger (FUNC-27, 29, 30) |
+| **Force-removal approval** | Single-level approval for executor force removal (`FLOW-PROC-APP-01`, IGN-ROLE-02), with the fixed R-07 teardown chain (FUNC-31~33) |
+| **Delivery facade** | Submit / receipt with incremental logs / cancel for upstream centers such as O-CLC, with source task traceability (FUNC-34~37) |
+| **Local execution kernel** | The backend container itself is the execution seat: fork with line-by-line stdout/stderr capture, cursor-monotonic masked logs, cancellation via request marker, and a fourth terminal state `LOST` for in-flight tasks after a platform restart |
+
+## How opic-ign Relates to Other Tools
+
+opic-ign is a **capability center**, not a replacement for a database, an identity provider, or a workflow engine. It inherits the opic-techbase engineering baseline and layers the delivery-execution domain on top.
+
+| Layer | Tools | Relationship |
 |---|---|---|
-| admin | 系统管理员 | 超管位(代码层注入 `*`) |
-| ignadmin | IGN-ROLE-01 交付管理员 | 版本/预推/执行机/证书/任务全部业务写 + FUNC-31 提交 + FUNC-37 门面台账 |
-| opsadmin | IGN-ROLE-02 平台运维管理员 | 降级声明/运行参数/审批 FUNC-32·33 + FUNC-37 门面台账 |
-| auditor | IGN-ROLE-03 交付审计员 | 全菜单只读 + 对账台账 + FUNC-37 门面台账 |
-| ignviewer | IGN-ROLE-04 交付只读用户 | 目录/台账只读 + FUNC-37 门面台账 |
-| (服务身份) | IGN-ROLE-05 执行机代理 + 上游中心门面身份 | FUNC-08/19/23(跨中心视图与任务提交)、FUNC-34/35/36(交付门面受理/回执/撤销) |
+| Engineering baseline | [opic-techbase](https://github.com/Project-Opic/opic-techbase) | Platform-level fork; the baseline carries the technology layer only, while business semantics belong to this center — the center evolves independently and security fixes flow back one-way |
+| Engineering model and visual system | [gopherforge](https://github.com/SuperiorChuo/gopherforge) (MIT) | Technology selection and repository layout baseline (inherited via the baseline fork); the console's glass theme is ported from its frontend with source headers preserved |
+| Identity and authentication | ZITADEL | OIDC provider (Authorization Code + PKCE, JWKS RS256 verification, role-claim mapping and auto-provisioning); `AUTH_MODE=local` keeps a local fallback with graphical captcha |
+| Workflow runtime | Temporal | Task queue `ign`; the force-removal approval flow runs on the inherited approval engine; `flowGuardian` SLA watchdog applies |
+| Event bus | NATS JetStream | Domain events (`opic.ign.version.*`, `executor.*`, `prepush.*`, `task.*`, `tls.*`, `ops.*`, `delivery.accepted`) published side-channel; failures never block the main path |
+| Data and cache | PostgreSQL (provisioned by Pigsty), Redis | PostgreSQL holds business data in the center schema `ign`; Redis is used only for token revocation and degrades silently when disabled |
+| Upstream centers | O-CLC (cluster center) | Cluster lifecycle actions are delivered step-by-step through the delivery facade (Bearer token, `source_task_no` + `source_step_index` traceability); O-AST asset checks and O-CRT certificate channels are reserved for later phases |
 
-### 快速启动
+## Repository Map
+
+| Component | Path | Description |
+|---|---|---|
+| **Backend service** | [`cmd/techbase/`](cmd/techbase) | Composition root inherited from the baseline: config → logging → PostgreSQL (goose) → seeds → Redis → Gin → graceful shutdown |
+| **HTTP layer** | [`internal/api/`](internal/api) | `routes.go` route table (`/api/v1/ign/*`, 37 endpoints), `business/ign.go` center controller, plus the facade and agent-side route groups |
+| **Business layer** | [`internal/service/`](internal/service) | `ign_common.go` numbering and events, `ign_rules.go` M3 rule equivalents, `ign_exec.go` local execution kernel, aggregate files (`ign_cluster`-style split per aggregate), `assistant.go` AI workspace, `seed.go` M5 seeds, workbench and flow adapters |
+| **Shared libraries** | [`pkg/`](pkg) | Error codes, logging, Redis, tokens, metrics, health checks, graceful shutdown, event bus, workflow wrappers (inherited from the baseline) |
+| **Migrations** | [`migrations/`](migrations) | Sequential goose migrations: `000004_business_ign.sql` (9 tables) and `000005_ign_delivery.sql` (v1.1 delivery columns and indexes) |
+| **Ontology models** | [`models/`](models) | Seven-model YAML (M1/M2/M3/M5/M6/M7/MU) with `manifest.json`; M6 carries an executable `nodeGraph` |
+| **Frontend** | [`frontend/`](frontend) | React 19 + Ant Design 6 + Redux Toolkit + Vite; seven business screens under `src/pages/ign/` plus approval-center pages |
+| **Deployment** | [`docker-compose.yml`](docker-compose.yml), [`docker-compose.infra.yml`](docker-compose.infra.yml), [`Dockerfile`](Dockerfile) | Separate application stack and data stack, with `BASE_DOMAIN` subdomain routing |
+| **Documentation** | [`docs/`](docs) | Onboarding, deployment, operations, FAQ, acceptance and web-test evidence |
+
+## Base Software
+
+Versions are pinned in `go.mod`, `frontend/package.json`, and the Dockerfiles. Infrastructure versions are those used by the production deployment.
+
+### Runtime and infrastructure
+
+| Component | Version | Upstream repository |
+|---|---|---|
+| Go | 1.27 | <https://github.com/golang/go> |
+| PostgreSQL | 16 | <https://github.com/postgres/postgres> |
+| Redis | 8 (optional) | <https://github.com/redis/redis> |
+| NATS Server | 2.14 (optional) | <https://github.com/nats-io/nats-server> |
+| Temporal | 1.29 (optional) | <https://github.com/temporalio/temporal> |
+| Traefik | v3 | <https://github.com/traefik/traefik> |
+| nginx | (frontend serving) | <https://github.com/nginx/nginx> |
+| Node.js | 20+ (build stage) | <https://github.com/nodejs/node> |
+
+### Backend (Go modules)
+
+| Module | Version | Upstream repository |
+|---|---|---|
+| `github.com/gin-gonic/gin` | v1.12.0 | <https://github.com/gin-gonic/gin> |
+| `gorm.io/gorm` | v1.31.0 | <https://github.com/go-gorm/gorm> |
+| `gorm.io/driver/postgres` | v1.6.0 | <https://github.com/go-gorm/postgres> |
+| `github.com/pressly/goose/v3` | v3.27.3 | <https://github.com/pressly/goose> |
+| `github.com/golang-jwt/jwt/v5` | v5.3.0 | <https://github.com/golang-jwt/jwt> |
+| `github.com/redis/go-redis/v9` | v9.22.0 | <https://github.com/redis/go-redis> |
+| `github.com/nats-io/nats.go` | v1.54.0 | <https://github.com/nats-io/nats.go> |
+| `go.temporal.io/sdk` | v1.49.0 | <https://github.com/temporalio/sdk-go> |
+| `go.uber.org/zap` | v1.28.0 | <https://github.com/uber-go/zap> |
+| `gopkg.in/natefinch/lumberjack.v2` | v2.2.1 | <https://github.com/natefinch/lumberjack> |
+| `golang.org/x/crypto` | v0.57.0 | <https://github.com/golang/crypto> |
+| `gopkg.in/yaml.v3` | v3.0.1 | <https://github.com/go-yaml/yaml> |
+
+### Frontend (npm)
+
+| Package | Version | Upstream repository |
+|---|---|---|
+| `react` / `react-dom` | 19 | <https://github.com/facebook/react> |
+| `antd` | 6 | <https://github.com/ant-design/ant-design> |
+| `@ant-design/icons` | 6 | <https://github.com/ant-design/ant-design-icons> |
+| `@reduxjs/toolkit` | 2.5 | <https://github.com/reduxjs/redux-toolkit> |
+| `react-router-dom` | 7.2 | <https://github.com/remix-run/react-router> |
+| `axios` | 1.8 | <https://github.com/axios/axios> |
+| `@xyflow/react` | 12.3 | <https://github.com/xyflow/xyflow> |
+| `vite` | 8 | <https://github.com/vitejs/vite> |
+| `typescript` | 5.8 | <https://github.com/microsoft/TypeScript> |
+
+All third-party components above ship under permissive licenses (MIT / Apache-2.0 / BSD). Refer to each upstream repository for the exact terms.
+
+## Usage
+
+### Local Development Environment
+
+Prerequisites: Go 1.27+, Node 20.12+ (nvm 20.19.5 recommended), and a reachable PostgreSQL 16 instance (production Pigsty HAProxy at `192.168.3.200:5433`).
 
 ```bash
-# 前置:Go 1.27+;PostgreSQL 16(opicdb,中心 schema ign);可选 NATS(JetStream)
+# 1) Create the center schema (the application also runs goose migrations on startup)
+psql -c "CREATE SCHEMA IF NOT EXISTS ign AUTHORIZATION postgres;"   # database opicdb
+
+# 2) Configure (passwords are injected via environment variables only, never in the repo)
+export CENTER_CODE=ign DB_SCHEMA=ign
+export DB_HOST=192.168.3.200 DB_PORT=5433 DB_USER=postgres DB_NAME=opicdb
+export REDIS_ENABLED=false
+export EVENTBUS_DRIVER=nats EVENTBUS_URL="nats://192.168.3.200:14222"
+export WORKFLOW_DRIVER=local
+export APP_PORT=9709
+
+# 3) Build and start (goose migrations + M5 seeds + M6 flow import, idempotent)
 go build -o bin/ignition-center ./cmd/techbase
-CREATE SCHEMA 项:psql -c "CREATE SCHEMA IF NOT EXISTS ign AUTHORIZATION postgres;"(库 opicdb)
+./bin/ignition-center          # → http://localhost:9709
 
-# 口令(DB_PASSWORD / EVENTBUS_PASSWORD)只在部署环境注入,不写进命令行与仓库;
-# 交付执行位(§1.6.1):路径只在部署配置取值,不进代码常量/字典,留空即"本机执行位不可用"走 R-15
-CENTER_CODE=ign DB_HOST=<pg> DB_PORT=5433 DB_USER=postgres DB_NAME=opicdb DB_SCHEMA=ign \
-REDIS_ENABLED=false EVENTBUS_DRIVER=nats EVENTBUS_URL=nats://<nats>:14222 \
-EVENTBUS_USERNAME=opic WORKFLOW_DRIVER=local METRICS_ENABLED=true APP_PORT=9709 \
-IGN_DELIVERY_TOOL_BIN=/opt/opic/delivery/bin/ezctl IGN_DELIVERY_TOOL_ROOT=/etc/kubeasz \
-IGN_DELIVERY_SSH_DIR=/root/.ssh IGN_DELIVERY_FACADE_TOKEN=<生产 .env 发放> \
-./bin/ignition-center
-# 启动即完成:goose 迁移(000001..000005)→ M5 种子(角色/权限/菜单/账号/参数缺省/LOCAL 执行机/门面服务账号)→ M6 审批流导入
+# 4) Frontend (development mode)
+make frontend-install && make dev-frontend   # http://localhost:5173, proxy → 9709
 ```
 
-### 冒烟验证(已实测通过)
+Default accounts (`AUTH_MODE=local`, captcha login, password `admin123`):
 
-```
-health=200;验证码登录 admin/admin123;
-FUNC-01 版本登记 VER-20261004-0001 → INV-01 重名阻断 / INV-02 格式阻断 / INV-04 契约冻结拦截;
-FUNC-13 注册 EXE-20261004-0003 → INV-12 人工 LOCAL 拒绝 → R-04 错误令牌失败计数 → R-03 引导回连(双绑定+凭据 CONSUMED → READY);
-R-12 白名单外(rm -rf /)与拼接风险提交治理拒绝并审计;FUNC-23 提交 TSK-* → INV-31 防重放返回原任务 → 环境变量脱敏展示;
-FUNC-24 取消 → CANCELLING;R-05 LOCAL 并发 4/4 容量拒绝;
-FUNC-31 强制注销 RMV-*(影响面 R-08 强制展示)→ IGN-ROLE-02 待办(归属校验:他人审批被拒)→ FUNC-32 通过 → R-07 拆除链 → REMOVED + 注销报告留痕;
-FUNC-33 驳回路径:状态不变意见留痕;R-06 心跳纠偏(本地 0 → 上报 9,留痕入台账);
-FUNC-29 统计 / FUNC-30 参数维护;AI 对话 + 只读 SQL(白名单/写拒绝/凭据表 INV-22 排除)。
-```
-
-v1.1 交付链路口径(由 `internal/service/ign_delivery_pg_test.go`·`ign_exec_test.go`·`ign_recap_test.go`·`ign_mask_test.go` +
-门面两层单测覆盖;真实挂载与上游联调在 3.200 待验):
-
-```
-未配 facade_token ⇒ 门面三接口一律 401(flat JSON,不泄漏配置态);
-Bearer 正确令牌 + 越权动作码(ezctl.new / scripts.* / rm -rf /)⇒ 403 GOVERNANCE_REFUSE 并审计;
-合法受理 step_code=02 ⇒ 200 + TSK-*,重复受理(同 source_task_no + source_step_index)⇒ 返回原任务(INV-35);
-节点增删类缺 nodes[] ⇒ 400;同集群已在途 ⇒ 409 排队拒绝(R-17);
-执行位未挂载 ⇒ 受理即刻 409 TOOL_UNAVAILABLE,不建任务行(R-15),LOCAL 健康列同口径派生;
-receipt/:ref?since_seq= ⇒ 状态 + 结论依据 + 增量日志行(游标单调,已脱敏行带 masked);
-平台重启后在途 RUNNING ⇒ B-AUTO-14 判 LOST(退出码位为空)+ TASK_LOST 留痕;
-日志行含口令/令牌形态 ⇒ 写前不可逆脱敏为 [已掩码](R-16/INV-40)。
-```
-
-权限矩阵抽测:ignviewer(FUNC-06 可查 / FUNC-01 写被拒 SYS9103);审批归属:非受理角色被拒「该任务不属于当前用户」。
-
----
-
-# opic-techbase(底座原文,作为本仓技术基线参照)
-
-# opic-techbase —— OPIC 技术底座(gopherforge 技术栈)
-
-OPIC 开放智能算力平台的 **Go 技术底座**:《系统管理 + 流程引擎需求规格说明书》的可运行技术空框架,
-含客户申请/客户查询两个示例功能(暂存→提交→客户经理审批→部门总经理审批的严格串行审批流)。
-
-> v3 重构说明:技术栈基准由 hertz-admin(CloudWeGo Hertz)迁移至
-> [gopherforge](https://github.com/SuperiorChuo/gopherforge)(MIT)的工程模式 —— **Gin 微服务脚手架栈**;
-> 业务功能、API 契约、OPIC 统一错误码与本体七模型语义 **100% 保留**(见文末"重构映射与行为变更")。
-
-## 0. 文档导航
-
-| 文档 | 内容 |
-|---|---|
-| [新人培训入门](docs/ONBOARDING.md) | 背景/架构/环境/首次启动/开发流程 |
-| [编译与部署指南](docs/DEPLOYMENT.md) | 构建、生产部署、迁移回滚、fork checklist |
-| [运维手册](docs/OPERATIONS.md) | 健康检查/监控告警/日志/备份/凭据/故障速查 |
-| [FAQ](docs/FAQ.md) | 18 条实战踩坑速查（SSO/SQL/部署/前端/AI） |
-
-官网镜像：opic-website「技术底座」分类（https://opic-website 10.26.8.51:8088）。
-
-## 1. 技术选型(gopherforge 栈对齐)
-
-| 层 | 选型 | 说明 |
+| Account | Role | Permission summary |
 |---|---|---|
-| 后端框架 | **Gin**(gopherforge 同款,gin-gonic/gin v1.12) | 组合根 `cmd/techbase/main.go`;中间件链 metrics → recovery → CORS → 访问日志 → 路由 |
-| 数据库 | **PostgreSQL 16**(OPIC-数据服务域集成 [Pigsty](https://pigsty.io) 部署) | GORM 仅承担连接池与事务,数据访问为原生 SQL + map 行(功能语义不变) |
-| 迁移 | **goose**(gopherforge 同款) | `migrations/000NNN_*.sql`(`-- +goose Up/Down`),启动自动 Up,`make migrate-*` 手工管理 |
-| 缓存/吊销 | **Redis 8**(go-redis v9,可选) | 登出令牌 jti 黑名单(`pkg/token`);未启用时静默降级为旧行为 |
-| 认证 | **ZITADEL**(OPIC-零信任安全中心集成,保持不变) | OIDC Authorization Code + PKCE;JWKS(RS256)验签;角色声明映射 + 自动 provisioning;`mode=local` 保留本地回退 |
-| 错误码 | **OPIC O-ARC 统一错误码**(保持不变) | 7 位 `[3 位前缀][4 位数字]`,成功码 `SUC0000`,响应 `{"returnInfo":{"returnCode","errorMsg"},"data":...}` |
-| 日志 | **zap + lumberjack**(gopherforge 同款) | console + 可选文件双写轮转(`log.output: file`) |
-| 可观测性 | **/health 系列 + /metrics**(gopherforge 同款) | `/health`、`/health/live`、`/health/ready`、`/health/check`;零依赖手写 Prometheus 文本指标 `opic_techbase_*` |
-| 网关 | **Traefik v3**(gopherforge 同款,label 路由) | `/api`、`/health`、`/metrics` → 后端,`/` → 前端 |
-| 部署 | **Docker Compose 数据栈/应用栈分离**(gopherforge 模式) | `docker-compose.infra.yml`(PG+Redis)/ `docker-compose.yml`(应用+前端+网关);12-factor 环境变量覆盖 |
-| 前端 | **React 19 + Ant Design 6 + Redux Toolkit + React Router 7 + Axios + Vite**(gopherforge 栈) | 全部页面重建;流程设计器用 @xyflow/react v12;`request.ts` 沿用 returnInfo 解包与 `cp_token` 存储 |
+| `admin` | System administrator | Super-admin position (injected at code level) |
+| `ignadmin` | IGN-ROLE-01 Delivery administrator | All business writes plus FUNC-31 submission and FUNC-37 facade ledger |
+| `opsadmin` | IGN-ROLE-02 Platform ops administrator | Degradation declaration, runtime parameters, approvals FUNC-32/33, FUNC-37 |
+| `auditor` | IGN-ROLE-03 Delivery auditor | Full-menu read-only plus reconciliation ledger and FUNC-37 |
+| `ignviewer` | IGN-ROLE-04 Delivery read-only user | Catalog and ledger read-only plus FUNC-37 |
 
-## 2. 目录结构(gopherforge 工程布局)
+IGN-ROLE-05 is a service identity (executor agent and upstream-center facade) and has no interactive account.
 
-```
-opic-techbase/
-├── cmd/techbase/main.go          # 组合根:配置→日志→PG(goose)→种子→Redis→Gin→优雅退出
-├── configs/config.yml            # 配置(env > yaml > 默认)
-├── internal/
-│   ├── api/                      # 路由与控制器(gin)
-│   │   ├── routes.go             # /api 路由(公开组+登录组+权限中间件,与旧版逐条一致)
-│   │   ├── common/               # returnInfo 响应助手/分页/路径参数
-│   │   ├── auth/                 # 登录/登出/信息 + ZITADEL/Casdoor OIDC 回调与 provisioning + 图形验证码(本地登录前置)
-│   │   ├── meta/                 # 字典/客户状态/M3 规则
-│   │   ├── business/             # 客户申请 + 审批中心
-│   │   ├── flow/                 # 流程定义/实例/任务
-│   │   └── system/               # 用户/角色/权限/资源
-│   ├── config/                   # 配置装配(含 env 覆盖)
-│   ├── middleware/               # 认证(双令牌)/权限/CORS/访问日志
-│   ├── service/                  # 业务服务(auth/user/rbac/flow/workbench/customer/seed)
-│   │   └── engine/               # 轻量工作流引擎(start/approve/reject/return,语义不变)
-│   ├── store/                    # GORM PG16 连接 + 原生 SQL 数据访问 + goose 迁移
-│   └── pkg/                      # auth(ZITADEL)/ontology(七模型注册表)/expr(表达式)
-├── pkg/                          # 共享库(gopherforge shared/pkg 模式)
-│   ├── errcode/                  # OPIC 统一错误码(不变)
-│   ├── logger/                   # zap 日志
-│   ├── redisx/                   # Redis 客户端(可选)
-│   ├── token/                    # JWT 吊销黑名单(Redis)
-│   ├── metrics/                  # Prometheus 文本指标
-│   ├── health/                   # 健康检查
-│   └── graceful/                 # 优雅退出
-├── migrations/000001_init_techbase.sql   # goose 迁移(13 表,与旧 schema.sql 同构)
-├── models/                       # 七模型 YAML(M1/M2/M5/M6/MU,不变)
-├── frontend/                     # React 19 + antd 6 + RTK(全部页面重建)
-├── docker-compose.infra.yml      # 数据栈:postgres:16 + redis:8
-├── docker-compose.yml            # 应用栈:ign(点火中心) + frontend(nginx)+ traefik 子域路由
-├── Dockerfile / frontend/Dockerfile
-├── Makefile / .env.example / .golangci.yml / .editorconfig
-```
-
-## 3. 快速开始
-
-前置:Go 1.27+;一个 PostgreSQL 16 实例(生产经 OPIC-DBS/Pigsty 供给;本机可用任意 PG;或直接用 compose)。
+One-command full stack (compose):
 
 ```bash
-# 1) 建库(示例)
-createdb go_techbase
-
-# 2) 改 configs/config.yml 的 database 段(或用环境变量 DB_*;整串可用 GO_TECHBASE_DSN)
-
-# 3) 启动(自动 goose 迁移 + 种子,幂等)
-make dev          # 或 go run ./cmd/techbase → http://localhost:9680
-
-# 4) 前端(开发模式)
-make frontend-install && make dev-frontend   # http://localhost:5173,proxy → 9680
-```
-
-默认账号(local 模式):`admin/admin123`(超管)、`sales/123456`、`cmanager/123456`、`gm/123456`。
-
-### 一键全栈(compose)
-
-```bash
-cp .env.example .env      # 按需修改
-make compose-up           # 数据栈(--wait)→ 应用栈:网关 :8000 / 后端调试口 127.0.0.1:9680
+cp .env.example .env
+make compose-up           # data stack (--wait) → app stack: ign.opic-ai.ccoe.tech
 make compose-down
 ```
 
-### 冒烟自测
-
-```
-sales 登录 → 建草稿 → 提交(启动 FLOW-CUSTOMER-APPROVAL,状态「待客户经理审批」)
-→ cmanager 待办通过 → gm 待办通过 → 客户状态「已通过」(flow_instance APPROVED,flow_history 完整)
-```
-
-## 4. 配置(环境变量 > config.yml)
-
-| 环境变量 | 说明 | 默认 |
-|---|---|---|
-| `GO_TECHBASE_DSN` | 整串 DSN 覆盖 database 段 | - |
-| `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME/DB_SSLMODE` | 分项覆盖 | config.yml |
-| `APP_PORT` | HTTP 端口 | 9680 |
-| `JWT_SECRET` | HS256 密钥 | go-techbase-dev-secret |
-| `AUTH_MODE` | local / zitadel | local |
-| `ZITADEL_ISSUER/ZITADEL_CLIENT_ID/ZITADEL_CLIENT_SECRET/ZITADEL_REDIRECT_URL` | ZITADEL OIDC 参数 | config.yml |
-| `REDIS_ENABLED/REDIS_HOST/REDIS_PORT/REDIS_PASSWORD` | Redis(登出吊销黑名单) | disabled |
-| `METRICS_ENABLED` | /metrics 与采集中间件 | true |
-| `LOG_LEVEL` | 日志级别 | info |
-
-## 5. ZITADEL 接入(mode=zitadel,不变)
-
-1. 零信任中心 docker-compose 起 ZITADEL(未修改容器,Login UI 由其托管);
-2. 在 ZITADEL 建项目/应用(Web OIDC),`redirect_uri` 填 `http://<host>:9680/api/auth/callback`;
-3. `configs/config.yml`:`auth.mode: zitadel`,填 `issuer/client_id/client_secret/redirect_url`(或 env `ZITADEL_*`);
-4. 浏览器访问 `GET /api/auth/login-url` 取授权地址跳转;回调后服务端换 token、读 userinfo、
-   按角色声明(默认 `roles`)映射本地角色并自动建用户,随后签发底座会话令牌;
-5. 中间件同时接受 ZITADEL 原生 access token(服务间调用),口径与零信任设计一致。
-
-## 6. 重构映射与行为变更(v2 hertz-admin → v3 gopherforge 栈)
-
-### 保留(功能基线 100% 不变)
-
-- 57 个 API 的路径、方法、权限码、请求/响应字段与分页契约;统一 returnInfo 响应与 17 个 SYS 错误码;
-- 认证:local HS256 会话(bcrypt)、ZITADEL OIDC+PKCE、双令牌中间件、角色沿父级聚合、`*` 超管位;
-- 业务:客户申请状态机、轻量工作流引擎(start/approve/reject/return、网关 rule_ref/outcome/condition/default)、
-  工作台归属口径、种子数据(4 角色/26 权限/16 资源/4 用户/流程定义导入)、本体注册表与表达式求值器。
-
-### 变更(新增能力,均向后兼容)
-
-| 项 | 旧(v2) | 新(v3) |
-|---|---|---|
-| Web 框架 | CloudWeGo Hertz | **Gin**(gopherforge 基准) |
-| DDL | 启动整文件执行 schema.sql | **goose** 序号迁移(`000001_init_techbase.sql`),启动自动 Up + `make migrate-*` |
-| 入口 | (缺失,仓库不可编译) | **补建 `cmd/techbase/main.go` 组合根** |
-| 日志 | stdout printf | **zap** console+文件双写轮转 |
-| 健康检查 | 无 | `/health` `/health/live` `/health/ready` `/health/check` |
-| 指标 | 无 | `/metrics`(Prometheus 文本,`opic_techbase_*`) |
-| 优雅退出 | 无 | SIGINT/SIGTERM LIFO 钩子(http/redis) |
-| Redis | 无 | 可选:登出令牌 jti 吊销黑名单(未启用=旧行为) |
-| 配置 | 仅 yaml | env 覆盖(12-factor,见上表) |
-| 部署 | 无 | compose 双栈 + Traefik 网关 + 前后端 Dockerfile |
-| 前端 | React 18 + 手写 CSS + Context | **React 19 + antd 6 + Redux Toolkit + axios + @xyflow/react 12**(页面与交互语义一致) |
-
-### 修复(重构中发现并修正)
-
-1. **重置密码契约**:旧前端发 `{password}` 而后端读 `new_password`,UI 必报 SYS1001;
-   重建后的前端已按后端契约发送 `{new_password}`。
-2. **任务转办下拉**:旧前端误用角色接口 `/users/options` 充当被转办人列表;
-   重建后的前端改用 `/users` 用户列表。
-3. 流程定义列表 `status=2` 的死分支(后端只会写 0/1)在前端不再展示。
-
-### 上游引用声明
-
-- gopherforge(MIT)作为**工程模式与技术选型基准**参考,未复制其源码;许可证与上游信息见
-  `~/github/gopherforge`(本机克隆,未做任何修订)。
-- 前端**管理控制台的视觉设计体系**(液态玻璃主题/玻璃登录页/Dashboard 样式)移植自
-  gopherforge 前端([MIT License](https://github.com/SuperiorChuo/gopherforge)),已按本项目
-  品牌与接口适配,移植文件头部均保留来源注释;用户工作台界面为本项目原有实现。
-
-## 管理控制台基准差距（对照 gopherforge dashboard）
-
-已落地：仪表盘｜系统管理(用户/角色/权限/资源≈菜单)｜日志审计(操作/登录/审计/在线用户)｜消息中心(公告管理)｜系统工具(错误码登记表/系统监控)｜审批中心(待办/我发起/流程定义)｜业务管理(v1 融合：客户管理)。
-
-暂缓项（基准超集，需对应后端服务先行，记录为后续迭代）：部门管理/岗位管理/租户管理/租户套餐/系统设置/短信管理/代码生成/OAuth2 应用/Webhook 订阅/文件管理/定时任务/告警规则/Redis·MySQL 独立监控页。
-
----
-
-## 九、step1 基础设施集成（2026-10-02 重构）
-
-脚手架深度接入 opic-ai 生产环境（192.168.3.200，`*.opic-ai.ccoe.tech`，见 opic-deploy 仓与 118 号生产方案）：
-
-| 基础设施 | 集成点 | 生产入口 |
-|---|---|---|
-| PostgreSQL（Pigsty） | `internal/store`（GORM 连接 + goose 迁移）；`database.schema` 落中心专属 schema（OPIC-DB-SCHEMA-01） | haproxy `:5433`(rw)/`:5434`(ro)，库 `opicdb` |
-| Redis | `pkg/redisx`（登出令牌吊销黑名单） | opic-net 内 `opic-redis:6379`（宿主回环 26379） |
-| NATS（事件总线） | **`pkg/eventbus`**：`driver=inproc`（默认，零依赖）/`driver=nats`（JetStream at-least-once）；主题域约定 `opic.<域码>.<...>` | opic-net 内 `opic-nats:4222`（宿主 14222），stream `OPIC`（`opic.>` 捕获） |
-| Temporal（工作流） | **`pkg/workflowx`**：`driver=local`（默认）/`driver=temporal`（含 `NewWorkerWorker` worker 路由）；业务命名空间 `opic` | opic-net 内 `temporal:7233` |
-| ZITADEL（零信任） | `internal/api/auth/zitadel.go`（OIDC+PKCE，JWKS 验签，角色声明映射） | `https://auth.opic-ai.ccoe.tech` |
-| Harbor（镜像仓） | `make harbor-push`（镜像推 `192.168.3.200:18700/opic/ign`；需 daemon insecure-registries 加 18700，变更窗口执行） | `http://192.168.3.200:18700` |
-| Traefik（入口） | compose 只声明 labels（`opic.stack=ign` + 子域路由），不自起网关 | 子域 `ign.opic-ai.ccoe.tech` |
-
-**中心仓复制改造三步**（以域码 `osys` 为例）：
-
-1. `configs/config.yml`：`database.schema: osys`；`eventbus.driver: nats`；`workflow.driver: temporal`；`auth.issuer: https://auth.opic-ai.ccoe.tech`；
-2. `migrations/`：本中心 DDL（goose 000NNN 序号，禁 AutoMigrate），首启自动落在 `osys` schema；
-3. `docker-compose.yml`：`BASE_DOMAIN` 环境已全局注入，子域随域名自动生效。
-
-**事件总线驱动切换语义**：`inproc` 为进程内直调（开发/降级兜底）；`nats` 为 JetStream durable 订阅，at-least-once——消费方必须幂等（115 号 §4.2）。接口契约两实现一致（`pkg/eventbus/contract_test.go`）。
-
-**验证**：`cmd/smoke` 为 live 冒烟（pg/redis/nats/temporal 四项），生产实测四项全绿：
+### Smoke Path
 
 ```bash
-CGO_ENABLED=0 GOOS=linux go build -o smoke ./cmd/smoke
-./smoke   # 需要 DB_PASSWORD(或PG_ADMIN_PASSWORD)/REDIS_PASSWORD/NATS_PASSWORD 等环境变量
+CENTER_CODE=ign DB_SCHEMA=ign go run ./cmd/smoke   # infrastructure probes (pg/redis/nats/temporal)
 ```
 
-> ⚠ pgx DSN 两个实测坑：空 `password=` 会吞掉后续 `dbname`；`search_path` 值不能含逗号（只设中心单 schema）。
+Verified path: register a delivery version (FUNC-01, `VER-YYYYMMDD-0001`) → register an executor (FUNC-13, bootstrap reconnection consumes the credential to READY) → submit a task (FUNC-23, replay protection returns the original task) → the execution kernel forks `ezctl`, streams masked logs, and the verdict gateway writes the terminal state with its evidence source → the reconciliation ledger records the outcome.
 
-### 九·一、流程引擎接线（2026-10-02，v1 语义 + step1 运行时）
+### Building Individual Components
 
-`/api/flow` 与客户申请流程的执行架构为**语义/运行时分离**（对齐 115 号 §4.2 判据）：
+```bash
+make build                 # backend binary → bin/ignition-center
+make frontend-build        # frontend assets → frontend/dist
 
-| 层 | 承担 | 实现 |
-|---|---|---|
-| **流程语义**（不变） | 审批流转：Start/Approve/Reject/ReturnTo、网关路由、规则求值 | `internal/service/engine`（v1 状态机，flow_definition/instance/task） |
-| **事件总线**（新增） | `opic.techbase.flow.{instance.started,task.created,instance.completed,sla.exceeded}` 四事件旁路发布 | `pkg/eventbus`（生产 driver=nats，stream `OPIC`） |
-| **运行时看护**（新增） | 任务 SLA 看护工作流 `flowGuardian-task-<id>`：到期未处理 → sla.exceeded | `pkg/workflowx`（生产 driver=temporal：服务端持久化定时器，**进程重启不丢**；local 降级为 goroutine） |
+make test                  # unit tests
+make lint                  # go vet
+make migrate-status        # migration status
+```
 
-- 装配：`internal/infra`（Init/EB/WF/Close，任一不可用降级 nil = 纯 v1 行为）；temporal worker 在 `cmd/techbase` 启动（TaskQueue `techbase`，workflow 名 `flowGuardian`）。
-- 发布/看护全部**旁路化**：失败仅记日志，绝不阻塞审批主流程。
-- 端到端实测（生产 192.168.3.200）：客户申请提交 → NATS 收到 `instance.started`/`task.created` + Temporal 出现 `flowGuardian-task-1`(Running)。
+## Deployment
 
-### 九·二、Temporal 流程设计器（2026-10-02，流程设计入口已切 Temporal）
+Production deployment runs through `make deploy-prod`: it rsyncs the source to the target host, builds the images there, copies compose and config files, then runs `docker compose up -d`. Migrations, seeds, and the M6 flow import execute automatically when the container starts.
 
-管理控制台「流程设计」菜单现已指向 **Temporal 流程设计器**（`/admin/temporalflow`）：
-xyflow 画布设计 **编排 DSL**（START/STEP/TIMER/CONDITION/END 五类节点；CONDITION 双出边 true/false 对启动变量表达式求值；STEP 可挂 Webhook；TIMER 秒级等待）→ 保存/发布（存 `flow_definition`，`flow_type='TEMPORAL'`，与 V1 审批流同表分流）→ 试运行启动 **通用解释器工作流**。
+```bash
+make deploy-prod           # build, deploy, start
+make deploy-prod-down      # stop the application stack
+```
 
-| 组件 | 位置 | 说明 |
-|---|---|---|
-| DSL 解析/校验/解释执行 | `pkg/temporalflow`（Parse/Run + 契约测试：顺序/条件真假/定时/缺分支/死循环护栏 MaxSteps=1000） | 解释器骨架驱动无关，Sleep/Emit/Webhook 原语由驱动提供 |
-| temporal 驱动 | `pkg/temporalflow/temporal.go`：`TemporalExecutor`（workflow.Sleep **服务端持久化定时器**）+ Activities（EmitEvent→NATS / Webhook→HTTP）+ `StartInterpreter` | workflow 名 `temporalInterpreter`，activities `EmitEventActivity`/`WebhookActivity` |
-| API | `/api/admin/temporalflow/*`（list/get/save/publish/run/validate；system:manage 权限） | run 接受启动变量（条件求值输入） |
-| 执行证据 | Temporal UI 可见 `temporalflow-<code>-<run>`：COMPLETED `{"finished":true,"steps":4}`；NATS stream `OPIC` 收 step.started/completed/run.completed | 生产端到端已实测 |
+Key environment variables (see the [Deployment Guide](docs/DEPLOYMENT.md) for the full list):
 
-V1 审批流设计器（FlowDesigner）保留在「V1 审批流定义」，两套语义互不影响。
+| Variable | Description |
+|---|---|
+| `CENTER_CODE` / `DB_SCHEMA` | Center domain code and schema (isolation root) |
+| `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` | PostgreSQL connection (Pigsty HAProxy) |
+| `APP_PORT` | HTTP port (default 9709) |
+| `REDIS_ENABLED/REDIS_HOST/REDIS_PORT/REDIS_PASSWORD` | Redis (logout revocation blacklist) |
+| `EVENTBUS_DRIVER/URL/USERNAME/PASSWORD` | Event bus (`inproc` or `nats`) |
+| `WORKFLOW_DRIVER/ADDRESS/NAMESPACE` | Workflow runtime (`local` or `temporal`, queue `ign`) |
+| `METRICS_ENABLED` / `JWT_SECRET` / `AUTH_MODE` | Observability / session secret / auth mode |
+| `IGN_DELIVERY_TOOL_BIN` / `IGN_DELIVERY_TOOL_ROOT` / `IGN_DELIVERY_SSH_DIR` | Local execution seat: delivery tool binary, working root, and execution-plane credential injection (unset ⇒ `LOCAL` executors cannot be registered, REF-16) |
+| `IGN_DELIVERY_FACADE_TOKEN` | Remote delivery facade token (unset ⇒ the three facade endpoints stay closed with 401) |
+
+### Distribution Channels
+
+Images are pushed to the internal Harbor registry: backend `192.168.3.200:18700/opic/ign`, frontend `192.168.3.200:18700/opic/ign-frontend` (`make harbor-push`). The production subdomain is `ign.opic-ai.ccoe.tech`.
+
+## Contributing
+
+Before opening a pull request, please confirm:
+
+1. `go build ./...`, `go vet ./...`, and `cd frontend && npm run build` all pass.
+2. Any added or changed endpoint keeps the `returnInfo` envelope and OPIC O-ARC error codes intact.
+3. Schema changes ship as a new goose migration (never `AutoMigrate`), with a working `Down`.
+4. Rule violations (`INV-*` / `R-*`) keep their Chinese explanations in the service layer; credentials and tokens are masked before any log write.
+
+Branch names and commit messages follow `feat|fix|docs|chore(scope): summary`.
+
+By submitting a contribution, you agree to license it under the [Mulan PSL v2](LICENSE).
+
+## Roadmap
+
+This repository does not maintain a long-range feature roadmap. Planned work and progress are tracked in the open:
+
+- **Recently completed**: the seven-model landing (M1/M2/M3/M5/M6/M7/MU with an executable `nodeGraph`), center isolation (`ign` schema / stream / subject / queue), the v1.1 delivery chain (step codes, source traceability, verdict sources, masked task logs), the delivery facade with flat-JSON semantics, and the local execution kernel with its four terminal states.
+- **Known gaps**: O-AST asset existence checks and O-CRT certificate issue/revocation cross-center channels are not yet wired; the REMOTE executor proxy counterpart is reserved but unimplemented (Q-68); real mounts and upstream joint testing remain to be verified on 3.200.
+- **Limitations**: the action-code whitelist is a three-layer reachable surface (11 delivery actions for humans and the facade, `ezctl.new` internal-only, `scripts.*` platform-only); in-flight tasks cannot be verified after a platform restart and are therefore explicitly `LOST`; the facade deliberately does not wrap responses in `returnInfo`.
+
+## Community
+
+- **Issues and suggestions**: open a repository issue with reproduction steps and environment details (version, migration number, deployment mode).
+- **Internal channels**: the OPIC platform team; production incidents go through the on-call channel.
+
+## Security & Support
+
+- **Reporting a vulnerability**: please do not open a public issue; contact the platform team directly. The security baseline includes facade-token gating (missing token ⇒ 401 closed, never degraded), governance refusal for out-of-whitelist or command-concatenation risk submissions with audit, irreversible masking of passwords / tokens / private keys before log writes, and a read-only SQL whitelist that deliberately excludes `bootstrap_credential` (INV-22).
+- **Support scope**: the current main branch and the deployed production version.
+
+## License
+
+Copyright © 2026 wjluo
+
+This project is licensed under the **Mulan Permissive Software License, Version 2 (Mulan PSL v2)**. The full text is in [`LICENSE`](LICENSE) and is also available at <http://license.coscl.org.cn/MulanPSL2>.
+
+Subject to the terms of the license, you may copy, use, modify, and distribute this software, including for commercial purposes; copyright and license notices must be retained when redistributing. Section 3 grants no trademark license, and Section 5 provides the software on an "AS IS" basis without warranties of any kind.
+
+### Third-Party and Ported Code
+
+- **opic-techbase** (Mulan PSL v2): this repository is a platform-level fork; the technology layer inherits the baseline, and the baseline's license continues to apply to that portion.
+- **gopherforge** (MIT): the engineering pattern and technology selection baseline, and the admin console's visual system (glass theme, login page, dashboard styling) is ported from its frontend, with source headers preserved in the ported files. Its MIT notice continues to apply to that portion.
